@@ -2,16 +2,19 @@
 // Licensed under the MIT License.
 
 #include <Windows.h>
-#include <thread>
 
-#include "Debug.h"
+#include "logging/Debug.h"
 #include "defines.h"
+#include "gui.h"
 
 // Handle incoming messages.
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	switch (uMsg) {
 	case WM_DESTROY:
 		PostQuitMessage(0);
+		return 0;
+	case WM_PAINT:
+		renderGUI(); // TODO: Flesh this out.
 		return 0;
 	}
 
@@ -44,7 +47,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	RECT bounds;
 	if (!GetClientRect(screen, &bounds)) {
 		Debug::logError("Failed to get screen bounds.");
-		return; // TODO: Is this acceptable?
+		return 0; // TODO: Is this acceptable?
 	}
 
 	Debug::log("Calculating window position and size based on screen size.");
@@ -52,13 +55,14 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	int y = (bounds.bottom - WINDOW_HEIGHT) / 2;
 
 	Debug::log("Creating window...");
-	HWND menu = CreateWindowEx(0, CLASS_NAME, TEXT(""), WS_POPUP, x, y, WINDOW_WIDTH, WINDOW_HEIGHT, NULL, NULL, hInstance, NULL);
+	HWND menu = CreateWindowEx(0, CLASS_NAME, TEXT(""), WS_POPUP, 
+		x, y, WINDOW_WIDTH, WINDOW_HEIGHT, NULL, NULL, hInstance, NULL);
 	// TODO: See about what sort of window resources you have to free after your done with using this stuff.
 
 	// Check whether the menu was created sucessfully.
 	if (menu == NULL) {
 		Debug::logError("Could not create menu window.");
-		return;
+		return 0;
 	}
 
 	Debug::log("Running message loop...");
