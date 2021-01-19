@@ -7,6 +7,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
+#include <stdio.h>
+
 // Logs the message to the debug output. Doesn't do anything when not in debug mode.
 void Debug::log(const char* message) {
 #ifdef _DEBUG
@@ -34,4 +36,12 @@ void Debug::logError(const char* message) {
 
 	OutputDebugStringA(buffer);
 #endif
+}
+
+void Debug::logNum(int num) {
+	if (sprintf_s(numBuffer, NUM_BUFFER_LENGTH, "%d", num) < 0) {
+		logError("Failure while logging number.");
+		return;
+	}
+	log(numBuffer);
 }
