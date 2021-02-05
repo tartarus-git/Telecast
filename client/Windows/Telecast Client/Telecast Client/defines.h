@@ -11,7 +11,8 @@
 #define WINDOW_HEIGHT 600
 
 // Networking.
-#define PORT 5000
+#define CLIENT_PORT 5000				// TODO: Make sure that there are no collisions between these ports and some other well-known protocol. Also make a config file where they are changeable.
+#define SERVER_PORT 5001
 
 #define FRAG_VALUE 2000
 #define FRAG_DATA FRAG_VALUE - 4 // TODO: Research about automatic brackets on defines.

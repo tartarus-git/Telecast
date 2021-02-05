@@ -116,13 +116,13 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	local.sin6_family = AF_INET6;
 	local.sin6_addr = in6addr_any;		// TODO: Is this valid? (for client.)
 	// TODO: The scope id can be left alone in this case right? Will it just use literal addresses then?
-	local.sin6_port = htons(PORT);					// Converts from host byte order to network byte order (big-endian).
+	local.sin6_port = htons(CLIENT_PORT);					// Converts from host byte order to network byte order (big-endian).
 
 	int sockOptEnable = 1;
 	
 	Debug::log("Initializing Winsock2...");
 	if (WSAStartup(MAKEWORD(2, 2), &Store::wsa) == SOCKET_ERROR) {
-		Debug::logError("Failed to initialize Winsock2. Error code:\n");
+		Debug::logError("Failed to initialize Winsock2. Error code:\n");				// TODO: Idk why this \n is in here. Does it look better or something?
 		Debug::logNum(WSAGetLastError());
 		goto quit;
 	}
@@ -141,16 +141,22 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 		goto quit;
 	}
 
-	Debug::log("Setting socket options so broadcasts can be sent...");
+	/*Debug::log("Setting socket options so broadcasts can be sent...");														// I think this is only necessary for IPv4 broadcasts, which were not doing right now.
 	if (setsockopt(Store::s, SOL_SOCKET, SO_BROADCAST, (const char*)&sockOptEnable, sizeof(int)) == SOCKET_ERROR) {
 		Debug::logError("Failed to set socket options. Error code:\n");
 		Debug::logNum(WSAGetLastError());
 		goto quit;
-	}
+	}*/
 
 	// Set up an address for use in broadcasts.
 	Store::broadcast = { };
-	Store::broadcast.sin6_addr = hton
+	Store::broadcast.sin6_family = AF_INET6;
+	Store::broadcast.sin6_port = htons(CLIENT_PORT);
+	if (inet_pton(AF_INET6, "ff02::1", &Store::broadcast.sin6_addr) == SOCKET_ERROR) {					// TODO: See if you can compute this at compile-time because it never changes. constexpr?
+		Debug::logError("Failed to convert all nodes multicast socket address from string to INET6_ADDR. Erorr code:\n");
+		Debug::logNum(WSAGetLastError());
+		goto quit;
+	}
 	
 	Debug::log("Registering system-wide hotkey for menu...");
 	if (!RegisterHotKey(menu, HOTKEY_ID, MOD_SHIFT | MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, KEY_M)) {
@@ -170,6 +176,7 @@ quit:
 
 	Debug::log("Freeing resources...");
 	ReleaseDC(menu, Store::g);
+	// TODO: Check if there is some resource freeing thing that you have to do with Winsock or something.
 
 	Debug::log("Done. Quitting...");
 }
