@@ -8,7 +8,5 @@
 #pragma comment(lib, "Ws2_32.lib")
 
 void discoverDevices() {
-	while (Store::doDiscovery) {
-		
-	}
+	
 }

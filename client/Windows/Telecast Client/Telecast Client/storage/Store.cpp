@@ -11,6 +11,7 @@ HDC Store::g;
 
 WSADATA Store::wsa;
 SOCKET Store::s;
+sockaddr_in6 Store::broadcast;
 
 Device* Store::discoveredDevices;
 size_t Store::len_discoveredDevices;

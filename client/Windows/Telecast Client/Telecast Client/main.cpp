@@ -111,10 +111,14 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	Store::g = GetDC(menu);			// TODO: Should I put some sort of safe pointer in here. If memory leaks don't matter after quit, what's the point?
 
 	// Initialize here so that the following code can goto quit.
-	sockaddr_in local = { };		// TODO: Learn about all the different fields and see if you can optimize this because of setting.
-	local.sin_family = AF_INET6;
-	local.sin_addr.S_un.S_addr = INADDR_ANY;
-	local.sin_port = htons(PORT);					// Converts from host byte order to network byte order (big-endian).
+
+	sockaddr_in6 local = { };		// TODO: Learn about all the different fields and see if you can optimize this because of setting.
+	local.sin6_family = AF_INET6;
+	local.sin6_addr = in6addr_any;		// TODO: Is this valid? (for client.)
+	// TODO: The scope id can be left alone in this case right? Will it just use literal addresses then?
+	local.sin6_port = htons(PORT);					// Converts from host byte order to network byte order (big-endian).
+
+	int sockOptEnable = 1;
 	
 	Debug::log("Initializing Winsock2...");
 	if (WSAStartup(MAKEWORD(2, 2), &Store::wsa) == SOCKET_ERROR) {
@@ -136,11 +140,23 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 		Debug::logNum(WSAGetLastError());
 		goto quit;
 	}
+
+	Debug::log("Setting socket options so broadcasts can be sent...");
+	if (setsockopt(Store::s, SOL_SOCKET, SO_BROADCAST, (const char*)&sockOptEnable, sizeof(int)) == SOCKET_ERROR) {
+		Debug::logError("Failed to set socket options. Error code:\n");
+		Debug::logNum(WSAGetLastError());
+		goto quit;
+	}
+
+	// Set up an address for use in broadcasts.
+	Store::broadcast = { };
+	Store::broadcast.sin6_addr = hton
 	
 	Debug::log("Registering system-wide hotkey for menu...");
 	if (!RegisterHotKey(menu, HOTKEY_ID, MOD_SHIFT | MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, KEY_M)) {
 		Debug::logError("Failed to register hotkey.");
 		goto quit; // TODO: What's the point of freeing the resources at the end of execution. Am I helping the operation system?
+		// No you're not, but it's good practice and it forces you to know your memory. It'll be very useful later in life, do it now for niceness's sake. Plus you don't want to fuck anything up when it comes to cross-platform stuff and other OS's.
 	}
 	
 	Debug::log("Running message loop...");
