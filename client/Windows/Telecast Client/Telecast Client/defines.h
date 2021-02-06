@@ -19,6 +19,8 @@
 
 #define MAX_DEVICES 256
 
+#define ACCEPT_SLEEP 1000
+
 // Hotkey.
 #define HOTKEY_ID 0
 #define KEY_M 0x4D

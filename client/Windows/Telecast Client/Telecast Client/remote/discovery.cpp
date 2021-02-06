@@ -10,6 +10,9 @@
 #pragma comment(lib, "Ws2_32.lib")
 
 void discoverDevices() {
+	// Reset list of discovered devices.
+	Store::len_discoveredDevices = 0;
+
 	if (listen(Store::discoveryReceiver, MAX_DEVICES) == SOCKET_ERROR) {
 		Debug::logError("Failure encountered while starting to listen for anwers to discovery. Error code:\n");
 		Debug::logNum(WSAGetLastError());
@@ -17,7 +20,6 @@ void discoverDevices() {
 	}
 
 	while (true) {
-loop:
 		// Send discovery message to tell all available devices to make themselves known.
 		if (sendto(Store::s, "<discovery>", 12, 0, (const sockaddr*)&Store::broadcast, sizeof(Store::broadcast)) == SOCKET_ERROR) {
 			Debug::logError("Failure encountered while broadcasting discovery message. Error code:\n");
@@ -30,12 +32,19 @@ loop:
 		// Listen for incoming answers.
 		sockaddr_in6 sender;
 		int senderLength;
+		bool retry = false;
 		while (true) {
-			// Try accepting a connection. If none are available to accept, loop again and try a few more times before resending the discovery broadcast.
+loop:
+			// Try accepting a connection. If none are available to accept, wait for a bit and try again. If nothing changes, resend discovery broadcast.
 			senderLength = sizeof(sender);					// TODO: This gets done even when the last accept didn't change it because of failure, change that.
 			if (accept(Store::discoveryReceiver, (sockaddr*)&sender, &senderLength) == SOCKET_ERROR) {
 				int error = WSAGetLastError();
-				if (error == WSAEWOULDBLOCK) { continue; }					// TODO: Make this wait a second and then retry a couple of times before giving up and sending another discovery broadcast. Same for the one all the way down there.
+				if (error == WSAEWOULDBLOCK) {
+					if (retry) { break; }			// TODO: Is there any better way to do this. Writing it two times might not even be right this time because of the if statement and stuff.
+					retry = true;
+					Sleep(ACCEPT_SLEEP);
+					continue;
+				}
 				Debug::logError("Failure encountered while accepting an answer to discovery broadcast. Error code:\n");
 				Debug::logNum(WSAGetLastError());
 				return;				// TODO: Obviously think about how to handle this.
@@ -52,6 +61,10 @@ loop:
 					Debug::logError("Failure encountered while receiving device descriptor. Error code:\n");
 					Debug::logNum(WSAGetLastError());
 					goto loop;						// TODO: Make sure you're not doing anything stupid here. Make sure all your memory is accounted for.
+					// TODO: Notes for this goto:
+					//		- It should goto loop if the device disconnects.
+					//		- It should return if there is something wrong with the clientside that won't fix itself.
+					//		Your gonna have to handle some errors here instead of just leaving.
 				}
 				pos += bytesReceived;
 				if (pos == sizeof(buffer)) { break; }
@@ -59,7 +72,7 @@ loop:
 
 			// If the device isn't already in the list, add it to the list of discovered devices.
 			for (int i = 0; i < Store::len_discoveredDevices; i++) {
-				if (Store::discoveredDevices[i].address == buffer.address) { continue; }
+				if (Store::discoveredDevices[i].address == buffer.address) { goto loop; }
 			}
 			Store::discoveredDevices[Store::len_discoveredDevices] = buffer;
 			Store::len_discoveredDevices++;

@@ -160,6 +160,9 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 
 	// Initialize the list of discovered devices.
 	Store::discoveredDevices = new Device[MAX_DEVICES];					// TODO: Use a safe pointer on this one.
+
+	// Set up a socket for receiving answers to discovery broadcasts.
+	if ((Store::discoveryReceiver = socket()) == )
 	
 	Debug::log("Registering system-wide hotkey for menu...");
 	if (!RegisterHotKey(menu, HOTKEY_ID, MOD_SHIFT | MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, KEY_M)) {
