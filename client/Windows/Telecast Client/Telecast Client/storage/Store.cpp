@@ -16,5 +16,8 @@ sockaddr_in6 Store::broadcast;
 Device* Store::discoveredDevices;
 size_t Store::len_discoveredDevices = 0;
 
-bool Store::doDiscovery = true;
+bool Store::doDiscovery;
 std::thread Store::discoverer;
+
+bool Store::doGUIRendering;
+std::thread Store::GUIRenderer;

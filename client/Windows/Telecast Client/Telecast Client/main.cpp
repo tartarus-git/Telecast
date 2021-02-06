@@ -37,7 +37,10 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 					return 0;
 				}
 
-				// TODO: Tell the thread to stop here before just joining, or else it's never going to work.
+				Store::doGUIRendering = false;
+				Store::GUIRenderer.join();
+
+				Store::doDiscovery = false;
 				Store::discoverer.join();
 
 				menuState = false;
@@ -49,7 +52,10 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 				return 0;
 			}
 
-			Store::discoverer = std::thread(discoverDevices);	// TODO: Stop creating a new thread and start reusing.
+			Store::doDiscovery = true;
+			Store::discoverer = std::thread(discoverDevices);	// TODO: Stop creating a new thread and start reusing. Figure out how to do that.
+			Store::doGUIRendering = true;
+			Store::GUIRenderer = std::thread(renderGUI);
 
 			menuState = true;
 			return 0;
@@ -112,13 +118,17 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 
 	// Initialize here so that the following code can goto quit.
 
+	// Set up the local address.
 	sockaddr_in6 local = { };		// TODO: Learn about all the different fields and see if you can optimize this because of setting.
 	local.sin6_family = AF_INET6;
 	local.sin6_addr = in6addr_any;		// TODO: Is this valid? (for client.)
 	// TODO: The scope id can be left alone in this case right? Will it just use literal addresses then?
 	local.sin6_port = htons(CLIENT_PORT);					// Converts from host byte order to network byte order (big-endian).
 
-	int sockOptEnable = 1;
+	// Initialize the list of discovered devices.
+	Store::discoveredDevices = new Device[MAX_DEVICES];					// TODO: Use a safe pointer on this one.
+
+	u_long nonblocking = true;
 	
 	Debug::log("Initializing Winsock2...");
 	if (WSAStartup(MAKEWORD(2, 2), &Store::wsa) == SOCKET_ERROR) {
@@ -148,7 +158,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 		goto quit;
 	}*/
 
-	// Set up an address for use in broadcasts.
+	Debug::log("Setting up broadcast address using the all nodes multicast group...");
 	Store::broadcast = { };
 	Store::broadcast.sin6_family = AF_INET6;
 	Store::broadcast.sin6_port = htons(CLIENT_PORT);
@@ -158,12 +168,27 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 		goto quit;
 	}
 
-	// Initialize the list of discovered devices.
-	Store::discoveredDevices = new Device[MAX_DEVICES];					// TODO: Use a safe pointer on this one.
+	Debug::log("Initializing the discovery receiver socket...");
+	if ((Store::discoveryReceiver = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP)) == INVALID_SOCKET) {
+		Debug::logError("Failed to create discovery receiver socket. Error code:\n");
+		Debug::logNum(WSAGetLastError());
+		goto quit;
+	}
 
-	// Set up a socket for receiving answers to discovery broadcasts.
-	if ((Store::discoveryReceiver = socket()) == )
-	
+	Debug::log("Setting the discovery receiver socket to non-blocking...");
+	if (ioctlsocket(Store::discoveryReceiver, FIONBIO, &nonblocking) == SOCKET_ERROR) {
+		Debug::logError("Failed to set the discovery receiver socket to non-blocking. Error code:\n");
+		Debug::logNum(WSAGetLastError());
+		goto quit;
+	}
+
+	Debug::log("Binding the discovery receiver socket...");
+	if (bind(Store::discoveryReceiver, (const sockaddr*)&local, sizeof(local)) == SOCKET_ERROR) {
+		Debug::logError("Failed to bind the discovery receiver socket. Error code:\n");
+		Debug::logNum(WSAGetLastError());
+		goto quit;
+	}
+
 	Debug::log("Registering system-wide hotkey for menu...");
 	if (!RegisterHotKey(menu, HOTKEY_ID, MOD_SHIFT | MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, KEY_M)) {
 		Debug::logError("Failed to register hotkey.");
@@ -181,7 +206,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 quit:
 
 	Debug::log("Freeing resources...");
-	delete[] Store::discoveredDevices;
+	delete[] Store::discoveredDevices;			// TODO: Also definitely free the sockets if you have to here.
 	ReleaseDC(menu, Store::g);
 	// TODO: Check if there is some resource freeing thing that you have to do with Winsock or something.
 

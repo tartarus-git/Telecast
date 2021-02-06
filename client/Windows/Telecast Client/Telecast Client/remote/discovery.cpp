@@ -19,7 +19,7 @@ void discoverDevices() {
 		return;					// TODO: Think about how to handle this.
 	}
 
-	while (true) {
+	while (Store::doDiscovery) {
 		// Send discovery message to tell all available devices to make themselves known.
 		if (sendto(Store::s, "<discovery>", 12, 0, (const sockaddr*)&Store::broadcast, sizeof(Store::broadcast)) == SOCKET_ERROR) {
 			Debug::logError("Failure encountered while broadcasting discovery message. Error code:\n");
@@ -33,7 +33,7 @@ void discoverDevices() {
 		sockaddr_in6 sender;
 		int senderLength;
 		bool retry = false;
-		while (true) {
+		while (Store::doDiscovery) {
 loop:
 			// Try accepting a connection. If none are available to accept, wait for a bit and try again. If nothing changes, resend discovery broadcast.
 			senderLength = sizeof(sender);					// TODO: This gets done even when the last accept didn't change it because of failure, change that.
@@ -53,6 +53,8 @@ loop:
 			// If connection was accepted, try receiving device descriptor from it.
 			Device buffer;
 			int pos = 0;
+			// TODO: This has to be true instead of isDescoveryAlive right? I mean, if this stops half way through then you have an invalid device or something.
+			// Is there a way to get away with putting it here? Something to make more efficient?
 			while (true) {							// TODO: Maybe convert all of the casts in your thing into c++ casts.
 				int bytesReceived = recv(Store::discoveryReceiver, (char*)&buffer + pos, sizeof(buffer) - pos, 0);
 				if (bytesReceived == SOCKET_ERROR) {

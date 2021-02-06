@@ -143,6 +143,7 @@
     <ClCompile Include="graphics\gui.cpp" />
     <ClCompile Include="logging\Debug.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="remote\Device.cpp" />
     <ClCompile Include="remote\discovery.cpp" />
     <ClCompile Include="storage\Store.cpp" />
   </ItemGroup>

@@ -30,6 +30,9 @@
     <ClCompile Include="remote\discovery.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="remote\Device.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="defines.h">

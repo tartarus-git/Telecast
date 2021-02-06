@@ -25,4 +25,7 @@ struct Store
 	// Threads
 	static bool doDiscovery;
 	static std::thread discoverer;
+
+	static bool doGUIRendering;
+	static std::thread GUIRenderer;
 };
