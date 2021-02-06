@@ -157,6 +157,9 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 		Debug::logNum(WSAGetLastError());
 		goto quit;
 	}
+
+	// Initialize the list of discovered devices.
+	Store::discoveredDevices = new Device[MAX_DEVICES];					// TODO: Use a safe pointer on this one.
 	
 	Debug::log("Registering system-wide hotkey for menu...");
 	if (!RegisterHotKey(menu, HOTKEY_ID, MOD_SHIFT | MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, KEY_M)) {
@@ -175,6 +178,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 quit:
 
 	Debug::log("Freeing resources...");
+	delete[] Store::discoveredDevices;
 	ReleaseDC(menu, Store::g);
 	// TODO: Check if there is some resource freeing thing that you have to do with Winsock or something.
 

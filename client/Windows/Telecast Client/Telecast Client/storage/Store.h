@@ -15,6 +15,7 @@ struct Store
 	// Network.
 	static WSADATA wsa;
 	static SOCKET s; // TODO: What about freeing this? We have to right, to like free up the port and whatnot?
+	static SOCKET discoveryReceiver;							// For receiving answers to a discovery request.
 	static sockaddr_in6 broadcast;
 
 	// List of discovered devices on the network.

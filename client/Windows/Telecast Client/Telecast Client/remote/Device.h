@@ -4,6 +4,6 @@
 
 struct Device
 {
-	sockaddr address;
+	sockaddr_in6 address;
 };
 

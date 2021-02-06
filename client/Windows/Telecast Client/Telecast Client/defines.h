@@ -17,6 +17,8 @@
 #define FRAG_VALUE 2000
 #define FRAG_DATA FRAG_VALUE - 4 // TODO: Research about automatic brackets on defines.
 
+#define MAX_DEVICES 256
+
 // Hotkey.
 #define HOTKEY_ID 0
 #define KEY_M 0x4D
