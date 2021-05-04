@@ -13,7 +13,7 @@ void discoverDevices() {
 	// Reset list of discovered devices.
 	Store::len_discoveredDevices = 0;
 
-	if (listen(Store::discoveryReceiver, MAX_DEVICES) == SOCKET_ERROR) {
+	if (listen(Store::discoveryListener, MAX_DEVICES) == SOCKET_ERROR) {
 		Debug::logError("Failure encountered while starting to listen for anwers to discovery. Error code:\n");
 		Debug::logNum(WSAGetLastError());
 		return;					// TODO: Think about how to handle this.
@@ -24,9 +24,7 @@ void discoverDevices() {
 		if (sendto(Store::s, "<discovery>", 12, 0, (const sockaddr*)&Store::broadcast, sizeof(Store::broadcast)) == SOCKET_ERROR) {
 			Debug::logError("Failure encountered while broadcasting discovery message. Error code:\n");
 			Debug::logNum(WSAGetLastError());
-			return;
-			// TODO: Think about doing something here. But even if this fails, it isn't a breaking change right, just wait till the next time and try again.
-			// TODO: Also find a way to deal with network changes and stoerungen and such in the other code.
+			return;									// This needs to return with an error to user saying that the network is somehow inaccessible or doesn't work or something.
 		}
 
 		// Listen for incoming answers.
@@ -36,8 +34,9 @@ void discoverDevices() {
 		while (Store::doDiscovery) {
 loop:
 			// Try accepting a connection. If none are available to accept, wait for a bit and try again. If nothing changes, resend discovery broadcast.
-			senderLength = sizeof(sender);					// TODO: This gets done even when the last accept didn't change it because of failure, change that.
-			if (accept(Store::discoveryReceiver, (sockaddr*)&sender, &senderLength) == SOCKET_ERROR) {
+			senderLength = sizeof(sender);					// TODO: This gets done even when the last accept didn't change it because of failure, change that. Figure out if the function even changes this value.
+			SOCKET discoveryReceiver = accept(Store::discoveryListener, (sockaddr*)&sender, &senderLength);
+			if (discoveryReceiver == SOCKET_ERROR) {
 				int error = WSAGetLastError();
 				if (error == WSAEWOULDBLOCK) {
 					if (retry) { break; }			// TODO: Is there any better way to do this. Writing it two times might not even be right this time because of the if statement and stuff.
@@ -56,7 +55,7 @@ loop:
 			// TODO: This has to be true instead of isDescoveryAlive right? I mean, if this stops half way through then you have an invalid device or something.
 			// Is there a way to get away with putting it here? Something to make more efficient?
 			while (true) {							// TODO: Maybe convert all of the casts in your thing into c++ casts.
-				int bytesReceived = recv(Store::discoveryReceiver, (char*)&buffer + pos, sizeof(buffer) - pos, 0);
+				int bytesReceived = recv(discoveryReceiver, (char*)&buffer + pos, sizeof(buffer) - pos, 0);
 				if (bytesReceived == SOCKET_ERROR) {
 					int error = WSAGetLastError();
 					if (error == WSAEWOULDBLOCK) { continue; }
@@ -74,7 +73,7 @@ loop:
 
 			// If the device isn't already in the list, add it to the list of discovered devices.
 			for (int i = 0; i < Store::len_discoveredDevices; i++) {
-				if (Store::discoveredDevices[i].address == buffer.address) { goto loop; }
+				if (Store::discoveredDevices[i] == buffer) { goto loop; }
 			}
 			Store::discoveredDevices[Store::len_discoveredDevices] = buffer;
 			Store::len_discoveredDevices++;

@@ -9,6 +9,8 @@
 
 #include <stdio.h>
 
+char Debug::numBuffer[NUM_BUFFER_LENGTH];
+
 // Logs the message to the debug output. Doesn't do anything when not in debug mode.
 void Debug::log(const char* message) {
 #ifdef _DEBUG

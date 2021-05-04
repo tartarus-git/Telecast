@@ -11,6 +11,7 @@ HDC Store::g;
 
 WSADATA Store::wsa;
 SOCKET Store::s;
+SOCKET Store::discoveryListener;
 sockaddr_in6 Store::broadcast;
 
 Device* Store::discoveredDevices;

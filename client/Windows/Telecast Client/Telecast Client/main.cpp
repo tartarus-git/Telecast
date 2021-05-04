@@ -1,9 +1,10 @@
 // Copyright (c) 2021 tartarus-git
 // Licensed under the MIT License.
 
-#include <winsock2.h>					// No need to include Windows.h because Winsock2 already contains the core functionality.
+#include <winsock2.h>					// No need to include Windows.h because this already contains everything we need.
 #include <ws2tcpip.h>
 #include <thread>
+#include <CommCtrl.h>
 
 #include "logging/Debug.h"
 #include "defines.h"
@@ -14,6 +15,7 @@
 #pragma comment(lib, "Ws2_32.lib")
 
 HWND menu;
+HWND discoveredDevicesList;
 int global_nCmdShow; // TODO: Is there a way to avoid the global thing?
 
 bool menuState = false;
@@ -46,14 +48,14 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 				menuState = false;
 				return 0;
 			}
-			if (!ShowWindow(menu, global_nCmdShow)) {			// TODO: Refresh on what nCmdShow is.
+			if (!ShowWindow(menu, global_nCmdShow)) {			// TODO: Refresh on what nCmdShow is. Refresh on why you need to pass it into the first call again.
 				Debug::log("Couldn't show menu.");
 				PostQuitMessage(0);
 				return 0;
 			}
 
 			Store::doDiscovery = true;
-			Store::discoverer = std::thread(discoverDevices);	// TODO: Stop creating a new thread and start reusing. Figure out how to do that.
+			Store::discoverer = std::thread(discoverDevices);	// TODO: Stop creating a new thread and start reusing. Figure out how to do that. You're going to have to switch library.
 			Store::doGUIRendering = true;
 			Store::GUIRenderer = std::thread(renderGUI);
 
@@ -69,7 +71,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 // Unicode and ANSI compatible entrypoint.
 // TODO: Research these _In_ things before the arguments, like why are they useful.
 #ifdef UNICODE
-int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ wchar_t* lpCmdLine, _In_ int nCmdShow) {
+int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ wchar_t* lpCmdLine, _In_ int nCmdShow) {			// TODO: Think about removing these useless macros in front of params.
 	Debug::log("Initiated program with UNICODE charset.");
 #else
 int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ char* lpCmdLine, _In_ int nCmdShow) {
@@ -105,7 +107,12 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	Debug::log("Creating window...");
 	menu = CreateWindowEx(0, CLASS_NAME, TEXT(""), WS_POPUP, 
 		x, y, WINDOW_WIDTH, WINDOW_HEIGHT, NULL, NULL, hInstance, NULL);
+
+	ShowWindow(menu, WS_VISIBLE);
 	// TODO: See about what sort of window resources you have to free after your done with using this stuff.
+
+	// Create the list box which will hold all of our discovered devices.
+	discoveredDevicesList = CreateWindowEx(0, WC_LISTBOX, TEXT(""), WS_CHILD | WS_VISIBLE, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, menu, NULL, hInstance, NULL);
 
 	// Check whether the menu was created sucessfully.
 	if (menu == NULL) {
@@ -169,21 +176,21 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	}
 
 	Debug::log("Initializing the discovery receiver socket...");
-	if ((Store::discoveryReceiver = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP)) == INVALID_SOCKET) {
+	if ((Store::discoveryListener = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP)) == INVALID_SOCKET) {
 		Debug::logError("Failed to create discovery receiver socket. Error code:\n");
 		Debug::logNum(WSAGetLastError());
 		goto quit;
 	}
 
 	Debug::log("Setting the discovery receiver socket to non-blocking...");
-	if (ioctlsocket(Store::discoveryReceiver, FIONBIO, &nonblocking) == SOCKET_ERROR) {
+	if (ioctlsocket(Store::discoveryListener, FIONBIO, &nonblocking) == SOCKET_ERROR) {										// This is so that we can keep executing if the socket starts waiting for ever or something.
 		Debug::logError("Failed to set the discovery receiver socket to non-blocking. Error code:\n");
 		Debug::logNum(WSAGetLastError());
 		goto quit;
 	}
 
 	Debug::log("Binding the discovery receiver socket...");
-	if (bind(Store::discoveryReceiver, (const sockaddr*)&local, sizeof(local)) == SOCKET_ERROR) {
+	if (bind(Store::discoveryListener, (const sockaddr*)&local, sizeof(local)) == SOCKET_ERROR) {
 		Debug::logError("Failed to bind the discovery receiver socket. Error code:\n");
 		Debug::logNum(WSAGetLastError());
 		goto quit;
@@ -192,8 +199,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	Debug::log("Registering system-wide hotkey for menu...");
 	if (!RegisterHotKey(menu, HOTKEY_ID, MOD_SHIFT | MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, KEY_M)) {
 		Debug::logError("Failed to register hotkey.");
-		goto quit; // TODO: What's the point of freeing the resources at the end of execution. Am I helping the operation system?
-		// No you're not, but it's good practice and it forces you to know your memory. It'll be very useful later in life, do it now for niceness's sake. Plus you don't want to fuck anything up when it comes to cross-platform stuff and other OS's.
+		goto quit;
 	}
 	
 	Debug::log("Running message loop...");
