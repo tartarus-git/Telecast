@@ -8,7 +8,6 @@
 
 #include "logging/Debug.h"
 #include "defines.h"
-#include "graphics/gui.h"
 #include "storage/Store.h"
 #include "remote/discovery.h"
 
@@ -16,7 +15,6 @@
 
 HWND menu;
 HWND discoveredDevicesList;
-int global_nCmdShow; // TODO: Is there a way to avoid the global thing?
 
 bool menuState = false;
 
@@ -26,21 +24,10 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 	case WM_DESTROY:
 		PostQuitMessage(0);
 		return 0;
-	case WM_PAINT:
-		renderGUI();
-		return 0;
 	case WM_HOTKEY:
 		// If correct hotkey is detected, toggle menu and discovery thread.
 		if (wParam == HOTKEY_ID) {
 			if (menuState) {
-				if (!ShowWindow(menu, SW_HIDE)) {			// SW_HIDE is valid because nCmdShow only has to be passed the first call.
-					Debug::log("Couldn't hide menu.");
-					PostQuitMessage(0);
-					return 0;
-				}
-
-				Store::doGUIRendering = false;
-				Store::GUIRenderer.join();
 
 				Store::doDiscovery = false;
 				Store::discoverer.join();
@@ -48,16 +35,9 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 				menuState = false;
 				return 0;
 			}
-			if (!ShowWindow(menu, global_nCmdShow)) {			// TODO: Refresh on what nCmdShow is. Refresh on why you need to pass it into the first call again.
-				Debug::log("Couldn't show menu.");
-				PostQuitMessage(0);
-				return 0;
-			}
 
 			Store::doDiscovery = true;
 			Store::discoverer = std::thread(discoverDevices);	// TODO: Stop creating a new thread and start reusing. Figure out how to do that. You're going to have to switch library.
-			Store::doGUIRendering = true;
-			Store::GUIRenderer = std::thread(renderGUI);
 
 			menuState = true;
 			return 0;
@@ -78,9 +58,6 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	Debug::log("Initiated program with ANSI charset.");
 #endif
 
-	// TODO: Put comment explaining here.
-	global_nCmdShow = nCmdShow;
-
 	Debug::log("Creating window class...");
 	WNDCLASS windowClass = { };
 	windowClass.lpfnWndProc = WindowProc;
@@ -91,39 +68,15 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	Debug::log("Registering window class...");
 	RegisterClass(&windowClass);
 
-	Debug::log("Getting screen bounds...");
-	// TODO: This will probably totally mess up when faced with a dual monitor system. Find a fix.
-	HWND screen = GetDesktopWindow(); // TODO: Research if this is always 0 like in c#.
-	RECT bounds;
-	if (!GetClientRect(screen, &bounds)) {
-		Debug::logError("Failed to get screen bounds.");
-		return 0; // TODO: Is this acceptable?
-	}
-
-	Debug::log("Calculating window position and size based on screen size.");
-	int x = (bounds.right - WINDOW_WIDTH) / 2;
-	int y = (bounds.bottom - WINDOW_HEIGHT) / 2;
-
 	Debug::log("Creating window...");
-	menu = CreateWindowEx(0, CLASS_NAME, TEXT(""), WS_POPUP, 
-		x, y, WINDOW_WIDTH, WINDOW_HEIGHT, NULL, NULL, hInstance, NULL);
-
-	ShowWindow(menu, WS_VISIBLE);
-	// TODO: See about what sort of window resources you have to free after your done with using this stuff.
-
-	// Create the list box which will hold all of our discovered devices.
-	discoveredDevicesList = CreateWindowEx(0, WC_LISTBOX, TEXT(""), WS_CHILD | WS_VISIBLE, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, menu, NULL, hInstance, NULL);
+	menu = CreateWindowEx(0, CLASS_NAME, TEXT("test"), WS_OVERLAPPEDWINDOW | WS_VISIBLE, 
+		0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, NULL, NULL, hInstance, NULL);
 
 	// Check whether the menu was created sucessfully.
 	if (menu == NULL) {
 		Debug::logError("Could not create menu window.");
 		return 0;
 	}
-
-	Debug::log("Getting device context for menu...");
-	Store::g = GetDC(menu);			// TODO: Should I put some sort of safe pointer in here. If memory leaks don't matter after quit, what's the point?
-
-	// Initialize here so that the following code can goto quit.
 
 	// Set up the local address.
 	sockaddr_in6 local = { };		// TODO: Learn about all the different fields and see if you can optimize this because of setting.
@@ -170,7 +123,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 	Store::broadcast.sin6_family = AF_INET6;
 	Store::broadcast.sin6_port = htons(CLIENT_PORT);
 	if (inet_pton(AF_INET6, "ff02::1", &Store::broadcast.sin6_addr) == SOCKET_ERROR) {					// TODO: See if you can compute this at compile-time because it never changes. constexpr?
-		Debug::logError("Failed to convert all nodes multicast socket address from string to INET6_ADDR. Erorr code:\n");
+		Debug::logError("Failed to convert all nodes multicast socket address from string to INET6_ADDR. Error code:\n");
 		Debug::logNum(WSAGetLastError());
 		goto quit;
 	}
