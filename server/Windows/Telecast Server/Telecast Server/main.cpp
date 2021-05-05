@@ -99,5 +99,5 @@ bool initNetwork() {
 		return false;
 	}
 
-	if (setsockopt(Store::discoveryListener, ))
+	// No need to join any sort of multicast group. The discovery protocol uses the all nodes multicast group, which all nodes are already a part of.
 }
