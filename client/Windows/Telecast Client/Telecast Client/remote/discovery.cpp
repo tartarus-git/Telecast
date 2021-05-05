@@ -82,6 +82,7 @@ loop:
 				getpeername()
 			}*/
 
+			// TODO: You should probably call shutdown here before just closing the sockets. Maybe research a little bit.
 			closesocket(discoveryReceiver);																					// Close connection with the responder, he did his job and that's that.
 
 			// If the device isn't already in the list, add	it to the list of discovered devices.
