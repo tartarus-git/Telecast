@@ -9,6 +9,8 @@ struct Store {
 	// WSA data from the WSAStartup() function.
 	static WSADATA wsaData;
 
-	// Receiving discovery broadcasts.
-	static SOCKET discoveryListener;
+	// Discovery broadcasts.
+	static SOCKET discoveryListener;																	// UDP
+	static SOCKET discoveryResponder;																	// TCP
+	static const char* discoveryResponse;
 };

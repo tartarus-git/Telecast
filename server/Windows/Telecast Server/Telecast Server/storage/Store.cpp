@@ -8,3 +8,5 @@
 WSADATA Store::wsaData;
 
 SOCKET Store::discoveryListener;
+SOCKET Store::discoveryResponder;
+const char* Store::discoveryResponse = "test";
