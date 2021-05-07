@@ -21,6 +21,9 @@
     <ClCompile Include="storage\Store.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="stream\TelecastStream.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="debugging.h">
@@ -36,6 +39,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="networking\discovery.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="stream\TelecastStream.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

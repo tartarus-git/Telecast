@@ -59,8 +59,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, char* lpCmdLine
 		return 0;																								// Couldn't find anything about needing to release or destroy the window, so I'm not going to.
 	}
 
+	LOG("Starting stream metadata thread...");
+	std::thread streamMetadataThread();
+
+	LOG("Starting discovery responder thread...");
+	std::thread discoveryResponderThread(respondToDiscoveries);													// Start responder thread first so that the buffer can be emptied ASAP when listener is turned on.
+	
 	LOG("Starting discovery listener thread...");
-	std::thread discoveryThread(listenForDiscoveries);
+	std::thread discoveryListenerThread(listenForDiscoveries);													// Start listener thread to listen for discovery broadcasts.
 
 	LOG("Running message loop...");
 	MSG msg;

@@ -145,6 +145,7 @@
   <ItemGroup>
     <ClCompile Include="main.cpp" />
     <ClCompile Include="storage\Store.cpp" />
+    <ClCompile Include="stream\TelecastStream.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="debugging.h" />
@@ -152,6 +153,7 @@
     <ClInclude Include="networking\discovery.h" />
     <ClInclude Include="networking\networkInit.h" />
     <ClInclude Include="storage\Store.h" />
+    <ClInclude Include="stream\TelecastStream.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
