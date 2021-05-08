@@ -49,10 +49,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, char* lpCmdLine
 	RegisterClass(&windowClass);																				// Register the WNDCLASS with the OS. // TODO: Research about ATOMS again.
 
 	LOG("Creating window...");
-	window = CreateWindow(TEXT(CLASS_NAME), TEXT(WINDOW_TITLE), WS_OVERLAPPEDWINDOW | WS_VISIBLE,		// Create the window. This one is visible from the get go so no call to ShowWindow.
+	window = CreateWindow(TEXT(CLASS_NAME), TEXT(WINDOW_TITLE), WS_OVERLAPPEDWINDOW | WS_VISIBLE,				// Create the window. This one is visible from the get go so no call to ShowWindow.
 		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, hInstance, NULL);
 
-	if (!window) {																							// If we can't create the window for some reason, just throw error and terminate.
+	if (!window) {																								// If we can't create the window for some reason, just throw error and terminate.
 		LOG("Could not create the main window. Terminating...");
 		return 0;
 	}
@@ -67,7 +67,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, char* lpCmdLine
 	std::thread graphicsThread(graphicsLoop);
 
 	LOG("Starting Telecast stream...");
-	mainStream = TelecastStream(SERVER_DATA_PORT, SERVER_METADATA_PORT);
+	//mainStream = TelecastStream(SERVER_DATA_PORT, SERVER_METADATA_PORT);
 
 	LOG("Starting discovery responder thread...");
 	std::thread discoveryResponderThread(respondToDiscoveries);													// Start responder thread first so that the buffer can be emptied ASAP when listener is turned on.
@@ -83,18 +83,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, char* lpCmdLine
 	}
 
 	LOG("Message loop ended, program is terminating...");														// Close and release everything before the program terminates.
-	shouldDiscoveryListenRun = false;
+	shouldDiscoveryListenRun = false;																			// Shutdown discovery listening and responding.
 	discoveryListenerThread.join();
-	closesocket(Store::discoveryListener);
-
 	shouldDiscoveryRespondRun = false;
 	discoveryResponderThread.join();
-	closesocket(Store::discoveryResponder);
 
-	shouldGraphicsLoopRun = false;
+	shouldGraphicsLoopRun = false;																				// Shutdown the graphics system.
 	graphicsThread.join();
-
-	mainStream.close();
+	
+	mainStream.close();																							// Shutdown the main data stream.
 }
 
 void graphicsLoop() {
