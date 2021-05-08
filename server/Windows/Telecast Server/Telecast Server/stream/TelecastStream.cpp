@@ -34,15 +34,22 @@ bool operator==(sockaddr_in6 left, sockaddr_in6 right) {							// TODO: This loo
 }
 
 TelecastStream::TelecastStream(u_short dataPort, u_short metadataPort) {
+	// Initialize addresses for the data and metadata sockets.
+	dataAddress = { };
+	dataAddress.sin6_family = AF_INET6;
+	dataAddress.sin6_addr = in6addr_any;
+	// TODO: The scope id can be left alone in this case right? Will it just use literal addresses then? What is the scope id?
+	dataAddress.sin6_port = htons(dataPort);														// Converts from host byte order to network byte order (big-endian).
+
+	metadataAddress = { };
+	metadataAddress.sin6_family = AF_INET6;
+	metadataAddress.sin6_addr = in6addr_any;
+	// TODO: The scope id can be left alone in this case right? Will it just use literal addresses then?
+	metadataAddress.sin6_port = htons(metadataPort);
+
 	// Allocate enough space on the heap for the display data.
 	backBuffer = new char[SERVER_DATA_BUFFER_SIZE];
 	frontBuffer = new char[SERVER_DATA_BUFFER_SIZE];
-
-	sockaddr_in6 dataAddress = { };		// TODO: Learn about all the different fields and see if you can optimize this because of setting.
-	dataAddress.sin6_family = AF_INET6;
-	dataAddress.sin6_addr = in6addr_any;		// TODO: Is this valid? (for client.)
-	// TODO: The scope id can be left alone in this case right? Will it just use literal addresses then?
-	dataAddress.sin6_port = htons(dataPort);					// Converts from host byte order to network byte order (big-endian).
 
 	// TODO: Is there any way to shrink this long and annoying code into something more portable or something?
 	// Stream data socket setup.
@@ -65,12 +72,6 @@ TelecastStream::TelecastStream(u_short dataPort, u_short metadataPort) {
 		closesocket(dataSocket);
 		return;
 	}
-
-	sockaddr_in6 metadataAddress = { };		// TODO: Learn about all the different fields and see if you can optimize this because of setting.
-	metadataAddress.sin6_family = AF_INET6;
-	metadataAddress.sin6_addr = in6addr_any;		// TODO: Is this valid? (for client.)
-	// TODO: The scope id can be left alone in this case right? Will it just use literal addresses then?
-	metadataAddress.sin6_port = htons(metadataPort);					// Converts from host byte order to network byte order (big-endian).
 
 	// Stream metadata socket setup.
 	if (metadataSocket = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP) == SOCKET_ERROR) {
@@ -102,6 +103,24 @@ TelecastStream& TelecastStream::operator=(TelecastStream&& other) noexcept {
 	metadataThread = std::move(other.dataThread);
 	other.backBuffer = nullptr;
 	return *this;
+}
+
+void TelecastStream::networkStatusMonitor(TelecastStream* instance) {
+	while (instance->shouldMonitorNetworkStatus) {
+		if (instance->networkError) {																					// If the networkError flag is set, shutdown data and metadata threads.
+			if (instance->shouldReceiveData) {
+				instance->shouldReceiveData = false;
+				instance->dataThread.join();
+				break;
+			}
+			if (instance->shouldReceiveMetadata) {
+				instance->shouldReceiveMetadata = true;
+				instance->metadataThread.join();
+				break;
+			}
+		}
+	}
+	instance->isExperiencingNetworkIssues = true;																		// Set the public network issues flag to true so the main network manager can see it.
 }
 
 void TelecastStream::data(TelecastStream* instance) {
@@ -191,13 +210,35 @@ void TelecastStream::metadata(TelecastStream* instance) {
 	}
 }
 
-void TelecastStream::close() {
+void TelecastStream::halt() {																							// Shutdown the data and metadata thread.
 	shouldReceiveMetadata = false;
-	metadataThread.join();
-
+	metadataThread.join();																								// There is no release method, we have to wait for the destructors to be called.
 	shouldReceiveData = false;
 	dataThread.join();													// TODO: Make sure that this doesn't do anything bad if the thread is already joined.
-	// There is no release method, we have to wait for the destructors to be called.
+}
+
+void TelecastStream::restart() {																						// Restart necessary systems in order to get stream back up after usage of halt.
+	if (bind(dataSocket, (const sockaddr*)&dataAddress, sizeof(metadataAddress)) == SOCKET_ERROR) {						// Bind the data socket.
+		LOG("Encountered error while binding stream data socket. Error code: ");
+		LOGNUM(WSAGetLastError());
+		ASSERT(true);
+	}
+	if (bind(metadataSocket, (const sockaddr*)&metadataAddress, sizeof(metadataAddress)) == SOCKET_ERROR) {				// Bind the metadata socket.
+		LOG("Encountered error while binding stream metadata socket. Error code: ");
+		LOGNUM(WSAGetLastError());
+		ASSERT(true);
+	}
+
+	shouldReceiveMetadata = true;																						// Restart data and metadata threads.
+	metadataThread = std::thread(metadata, this);
+	shouldReceiveData = true;
+	dataThread = std::thread(data, this);
+}
+
+void TelecastStream::close() {
+	halt();																												// Halt threads.
+	closesocket(metadataSocket);																						// Close sockets. This releases used resources.
+	closesocket(dataSocket);
 	backBuffer = nullptr;																								// We use this as the flag for preventing double releases.
 }
 TelecastStream::~TelecastStream() { if (backBuffer) { close(); } }

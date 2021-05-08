@@ -23,8 +23,40 @@ LRESULT CALLBACK wndProc(HWND hWnd, unsigned int uMsg, WPARAM wParam, LPARAM lPa
 	return DefWindowProc(hWnd, uMsg, wParam, lParam);
 }
 
-HWND window;
 TelecastStream mainStream;
+std::thread discoveryResponderThread;
+std::thread discoveryListenerThread;
+
+bool shouldMonitorForNetworkErrors = true;
+void monitorForNetworkErrors() {																		// Thread, which resets necessary systems when network errors transpire.
+	while (shouldMonitorForNetworkErrors) {
+		if (!shouldDiscoveryListenRun) {																// If the discovery listener exits prematurely, synchronize exit across all systems.
+			discoveryListenerThread.join();
+			shouldDiscoveryRespondRun = false;
+			discoveryResponderThread.join();
+			mainStream.halt();
+		}
+		else if (!shouldDiscoveryRespondRun) {															// If the discovery responder exits prematurely, synchronize exit across all systems.
+			discoveryResponderThread.join();
+			shouldDiscoveryListenRun = false;
+			discoveryListenerThread.join();
+			mainStream.halt();
+		}
+		else if (mainStream.isExperiencingNetworkIssues) {												// If the stream is experiencing network issues, synchronize exit across all systems.
+			shouldDiscoveryListenRun = false;
+			discoveryListenerThread.join();
+			shouldDiscoveryRespondRun = false;
+			discoveryResponderThread.join();
+		}
+		else { continue; }
+		ASSERT(false);																					// Wait for the network to return to a usable state.
+		mainStream.restart();																			// Restart the stream.
+		discoveryResponderThread = std::thread(listenForDiscoveries);									// Restart the discovery responder and listener.
+		discoveryListenerThread = std::thread(respondToDiscoveries);
+	}
+}
+
+HWND window;
 
 bool shouldGraphicsLoopRun = true;
 void graphicsLoop();
@@ -66,14 +98,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, char* lpCmdLine
 	LOG("Initializing graphics...");
 	std::thread graphicsThread(graphicsLoop);
 
+	LOG("Starting network error monitoring system...");
+	std::thread networkMonitoringThread(monitorForNetworkErrors);
+
 	LOG("Starting Telecast stream...");
-	//mainStream = TelecastStream(SERVER_DATA_PORT, SERVER_METADATA_PORT);
+	mainStream = TelecastStream(SERVER_DATA_PORT, SERVER_METADATA_PORT);
 
 	LOG("Starting discovery responder thread...");
-	std::thread discoveryResponderThread(respondToDiscoveries);													// Start responder thread first so that the buffer can be emptied ASAP when listener is turned on.
+	discoveryResponderThread = std::thread(respondToDiscoveries);												// Start responder thread first so that the buffer can be emptied ASAP when listener is turned on.
 	
 	LOG("Starting discovery listener thread...");
-	std::thread discoveryListenerThread(listenForDiscoveries);													// Start listener thread to listen for discovery broadcasts.
+	discoveryListenerThread = std::thread(listenForDiscoveries);												// Start listener thread to listen for discovery broadcasts.
 
 	LOG("Running message loop...");
 	MSG msg;
@@ -92,6 +127,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, char* lpCmdLine
 	graphicsThread.join();
 	
 	mainStream.close();																							// Shutdown the main data stream.
+
+	shouldMonitorForNetworkErrors = false;																		// Shutdown the network monitoring system.
+	networkMonitoringThread.join();
 }
 
 void graphicsLoop() {

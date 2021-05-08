@@ -15,7 +15,11 @@ inline void logNum(int num) {
 #ifdef _DEBUG
 #define LOG(message) log(TEXT(message "\n"))
 #define LOGNUM(num) logNum(num)
+
+#define ASSERT(condition) if (!(condition)) { __debugbreak(); }
 #else
 #define LOG(message) ((void)0)
 #define LOGNUM(num) ((void)0)
+
+#define ASSERT(condition) ((void)0)
 #endif
