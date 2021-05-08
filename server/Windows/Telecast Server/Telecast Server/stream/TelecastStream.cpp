@@ -32,6 +32,7 @@ bool operator==(sockaddr_in6 left, sockaddr_in6 right) {							// TODO: This loo
 	}
 	return false;
 }
+bool operator!=(sockaddr_in6 left, sockaddr_in6 right) { return !operator==(left, right); }
 
 TelecastStream::TelecastStream(u_short dataPort, u_short metadataPort) {
 	// Initialize addresses for the data and metadata sockets.
@@ -48,53 +49,54 @@ TelecastStream::TelecastStream(u_short dataPort, u_short metadataPort) {
 	metadataAddress.sin6_port = htons(metadataPort);
 
 	// Allocate enough space on the heap for the display data.
-	backBuffer = new char[SERVER_DATA_BUFFER_SIZE];
+	backBuffer = new char[SERVER_DATA_BUFFER_SIZE];																												// Allocate 2 same-sized buffers so that we can double buffer this.
 	frontBuffer = new char[SERVER_DATA_BUFFER_SIZE];
 
 	// TODO: Is there any way to shrink this long and annoying code into something more portable or something?
+
 	// Stream data socket setup.
 	if (dataSocket = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP) == SOCKET_ERROR) {
 		LOG("Encountered error while initializing the stream data socket. Error code: ");
 		LOGNUM(WSAGetLastError());
-		return;
+		ASSERT(true);
 	}
 
-	if (ioctlsocket(dataSocket, FIONBIO, (u_long*)Store::nonblocking) == SOCKET_ERROR) {			// TODO: It seems like this function tries to modify the nonblocking thing. See if thats true.
+	if (ioctlsocket(dataSocket, FIONBIO, (u_long*)Store::nonblocking) == SOCKET_ERROR) {																		// Even though this looks weird, from what I could find in the docs, this function does not try to modify the nonblocking variable.
 		LOG("Encountered error while setting the stream data socket to non-blocking. Error code: ");
 		LOGNUM(WSAGetLastError());
 		closesocket(dataSocket);
-		return;
+		ASSERT(true);
 	}
 
 	if (bind(dataSocket, (const sockaddr*)&dataAddress, sizeof(dataAddress)) == SOCKET_ERROR) {
 		LOG("Encountered error while binding stream data socket. Error code: ");
 		LOGNUM(WSAGetLastError());
 		closesocket(dataSocket);
-		return;
+		ASSERT(true);
 	}
 
 	// Stream metadata socket setup.
 	if (metadataSocket = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP) == SOCKET_ERROR) {
 		LOG("Encountered error while initializing the stream metadata socket. Error code: ");
 		LOGNUM(WSAGetLastError());
-		return;												// TODO: Create invalid state if the constructor fails.
+		ASSERT(true);
 	}
 
-	if (ioctlsocket(metadataSocket, FIONBIO, (u_long*)Store::nonblocking) == SOCKET_ERROR) {			// TODO: It seems like this function tries to modify the nonblocking thing. See if thats true.
+	if (ioctlsocket(metadataSocket, FIONBIO, (u_long*)Store::nonblocking) == SOCKET_ERROR) {
 		LOG("Encountered error while setting the stream metadata socket to non-blocking. Error code: ");
 		LOGNUM(WSAGetLastError());
 		closesocket(metadataSocket);
-		return;
+		ASSERT(true);
 	}
 
 	if (bind(metadataSocket, (const sockaddr*)&metadataAddress, sizeof(metadataAddress)) == SOCKET_ERROR) {
 		LOG("Encountered error while binding stream metadata socket. Error code: ");
 		LOGNUM(WSAGetLastError());
 		closesocket(metadataSocket);
-		return;
+		ASSERT(true);
 	}
 
-	dataThread = std::thread(data, this);																				// Start the data and metadata network interfaces.
+	dataThread = std::thread(data, this);																														// Start the data and metadata network interfaces.
 	metadataThread = std::thread(metadata, this);
 }
 
