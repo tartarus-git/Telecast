@@ -10,6 +10,3 @@ WSADATA Store::wsaData;
 SOCKET Store::discoveryListener;
 SOCKET Store::discoveryResponder;
 const char* Store::discoveryResponse = "test";
-
-SOCKET Store::streamDataSocket;
-SOCKET Store::streamMetadataSocket;

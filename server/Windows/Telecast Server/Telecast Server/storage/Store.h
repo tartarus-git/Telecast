@@ -19,8 +19,4 @@ struct Store {
 	static SOCKET discoveryListener;																	// UDP
 	static SOCKET discoveryResponder;																	// TCP
 	static const char* discoveryResponse;
-
-	// Streaming.
-	static SOCKET streamDataSocket;																		// UDP
-	static SOCKET streamMetadataSocket;																	// TCP
 };
