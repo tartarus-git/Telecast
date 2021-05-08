@@ -21,7 +21,8 @@ private:
 	std::thread metadataThread;
 
 	// Stream data.
-	char* buffer;
+	char* backBuffer;																								// 2 buffers for double buffering.
+	char* frontBuffer;
 	unsigned int bufferIndex = 0;
 
 	// Stream metadata.
@@ -31,14 +32,18 @@ private:
 public:
 	// Stream metadata.
 	SIZE size;
+	
+	// Status flag for when the front buffer is safe to use.
+	bool isFrontBufferValid = false;
 
 	static void data(TelecastStream* instance);
 	static void metadata(TelecastStream* instance);
 
+	TelecastStream() = default;
 	TelecastStream(uint16_t dataPort, uint16_t metadataPort);
 
 	TelecastStream& operator=(TelecastStream&& other) noexcept;
 
-	void release();
+	void close();
 	~TelecastStream();
 };

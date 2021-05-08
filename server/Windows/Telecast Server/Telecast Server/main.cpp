@@ -6,13 +6,12 @@
 #include "storage/Store.h"																				// So that we can access important global variables.
 #include "networking/networkInit.h"
 #include "networking/discovery.h"
+#include "stream/TelecastStream.h"
 #include "debugging.h"																					// Debug helpers.
 
 #include "defines.h"																					// Useful defines.
 
 #pragma comment(lib, "Ws2_32.lib")																		// TODO: Maybe use a macro to make this 32 and 64 bit variable.
-
-
 
 // Window messaging callback (window procedure).
 LRESULT CALLBACK wndProc(HWND hWnd, unsigned int uMsg, WPARAM wParam, LPARAM lParam) {
@@ -21,9 +20,14 @@ LRESULT CALLBACK wndProc(HWND hWnd, unsigned int uMsg, WPARAM wParam, LPARAM lPa
 		PostQuitMessage(0);
 		return 0;
 	}
-
 	return DefWindowProc(hWnd, uMsg, wParam, lParam);
 }
+
+HWND window;
+TelecastStream mainStream;
+
+bool shouldGraphicsLoopRun = true;
+void graphicsLoop();
 
 // Entrypoint.
 #ifdef UNICODE
@@ -45,10 +49,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, char* lpCmdLine
 	RegisterClass(&windowClass);																				// Register the WNDCLASS with the OS. // TODO: Research about ATOMS again.
 
 	LOG("Creating window...");
-	HWND mainWindow = CreateWindow(TEXT(CLASS_NAME), TEXT(WINDOW_TITLE), WS_OVERLAPPEDWINDOW | WS_VISIBLE,		// Create the window. This one is visible from the get go so no call to ShowWindow.
+	window = CreateWindow(TEXT(CLASS_NAME), TEXT(WINDOW_TITLE), WS_OVERLAPPEDWINDOW | WS_VISIBLE,		// Create the window. This one is visible from the get go so no call to ShowWindow.
 		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, hInstance, NULL);
 
-	if (!mainWindow) {																							// If we can't create the window for some reason, just throw error and terminate.
+	if (!window) {																							// If we can't create the window for some reason, just throw error and terminate.
 		LOG("Could not create the main window. Terminating...");
 		return 0;
 	}
@@ -59,8 +63,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, char* lpCmdLine
 		return 0;																								// Couldn't find anything about needing to release or destroy the window, so I'm not going to.
 	}
 
-	LOG("Starting stream metadata thread...");
-	std::thread streamMetadataThread();
+	LOG("Initializing graphics...");
+	std::thread graphicsThread(graphicsLoop);
+
+	LOG("Starting Telecast stream...");
+	mainStream = TelecastStream(SERVER_DATA_PORT, SERVER_METADATA_PORT);
 
 	LOG("Starting discovery responder thread...");
 	std::thread discoveryResponderThread(respondToDiscoveries);													// Start responder thread first so that the buffer can be emptied ASAP when listener is turned on.
@@ -75,5 +82,40 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, char* lpCmdLine
 		DispatchMessage(&msg);
 	}
 
-	LOG("Message loop ended, program is terminating...");														// End of program.
+	LOG("Message loop ended, program is terminating...");														// Close and release everything before the program terminates.
+	shouldDiscoveryListenRun = false;
+	discoveryListenerThread.join();
+	closesocket(Store::discoveryListener);
+
+	shouldDiscoveryRespondRun = false;
+	discoveryResponderThread.join();
+	closesocket(Store::discoveryResponder);
+
+	shouldGraphicsLoopRun = false;
+	graphicsThread.join();
+
+	mainStream.close();
+}
+
+void graphicsLoop() {
+	HDC finalG = GetDC(window);																						// Get the context of the window.
+	HDC g = CreateCompatibleDC(finalG);																				// Create memory context for the sake of copying the front buffer to a context through the bitmap.
+	HBITMAP bmp = CreateCompatibleBitmap(finalG, mainStream.size.cx, mainStream.size.cy);							// This doesn't work directly with finalG because it already has a bitmap selected into it.
+	SelectObject(g, bmp);																							// TODO: Make sure you understand the above correctly.
+
+	while (shouldGraphicsLoopRun) {
+		if (mainStream.isFrontBufferValid) {
+			if (!SetBitmapBits(bmp, SERVER_DATA_BUFFER_SIZE, mainStream.data)) {					// TODO: Make sure to remember that the data must be WORD aligned.
+				LOG("Failed to set the bitmap bits to the front buffer. Terminating...");			// TODO: Figure out how to make this break out of this loop terminate all the threads (the whole program).
+				break;
+			}
+			mainStream.isFrontBufferValid = false;
+			// Copy one the memoryDC to the actual window DC.
+			// Use zoom algorithm to fit the received image onto whatever actual dimensions we've got for the window.
+		}
+	}
+
+	DeleteObject(bmp);
+	DeleteDC(g);
+	ReleaseDC(window, g);																						// Release the context of the window.
 }

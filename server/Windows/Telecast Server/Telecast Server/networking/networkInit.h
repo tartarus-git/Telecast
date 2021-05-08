@@ -30,7 +30,7 @@ inline bool initNetwork() {
 	local.sin6_family = AF_INET6;
 	local.sin6_addr = in6addr_any;											// TODO: Make sure you understand exactly what this does.
 	// TODO: The scope id can be left alone in this case right? Will it just use literal addresses then? What the hell is the scope ID.
-	local.sin6_port = htons(SERVER_PORT);																		// Convert server port from host byte order to network byte order (big-endian).
+	local.sin6_port = htons(SERVER_DISCOVERY_PORT);																// Convert server port from host byte order to network byte order (big-endian).
 
 	if (bind(Store::discoveryListener, (const sockaddr*)&local, sizeof(local)) == SOCKET_ERROR) {				// Bind the discovery listener socket.
 		LOG("Failed to bind the discovery listener socket. Error code: ");

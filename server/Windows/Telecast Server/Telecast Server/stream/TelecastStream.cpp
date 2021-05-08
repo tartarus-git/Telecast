@@ -35,7 +35,8 @@ bool operator==(sockaddr_in6 left, sockaddr_in6 right) {							// TODO: This loo
 
 TelecastStream::TelecastStream(u_short dataPort, u_short metadataPort) {
 	// Allocate enough space on the heap for the display data.
-	buffer = new char[SERVER_DATA_BUFFER_SIZE];
+	backBuffer = new char[SERVER_DATA_BUFFER_SIZE];
+	frontBuffer = new char[SERVER_DATA_BUFFER_SIZE];
 
 	sockaddr_in6 dataAddress = { };		// TODO: Learn about all the different fields and see if you can optimize this because of setting.
 	dataAddress.sin6_family = AF_INET6;
@@ -75,7 +76,7 @@ TelecastStream::TelecastStream(u_short dataPort, u_short metadataPort) {
 	if (metadataSocket = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP) == SOCKET_ERROR) {
 		LOG("Encountered error while initializing the stream metadata socket. Error code: ");
 		LOGNUM(WSAGetLastError());
-		return;
+		return;												// TODO: Create invalid state if the constructor fails.
 	}
 
 	if (ioctlsocket(metadataSocket, FIONBIO, (u_long*)Store::nonblocking) == SOCKET_ERROR) {			// TODO: It seems like this function tries to modify the nonblocking thing. See if thats true.
@@ -99,7 +100,7 @@ TelecastStream::TelecastStream(u_short dataPort, u_short metadataPort) {
 TelecastStream& TelecastStream::operator=(TelecastStream&& other) noexcept {
 	dataThread = std::move(other.dataThread);
 	metadataThread = std::move(other.dataThread);
-	other.buffer = nullptr;
+	other.backBuffer = nullptr;
 	return *this;
 }
 
@@ -109,7 +110,7 @@ void TelecastStream::data(TelecastStream* instance) {
 
 	while (instance->shouldReceiveData) {
 		int bytesReceived;
-		if ((bytesReceived = recvfrom(instance->dataSocket, instance->buffer, SERVER_DATA_BUFFER_SIZE - instance->bufferIndex, 0, (sockaddr*)&dataClient, &dataClientSize)) == SOCKET_ERROR) {					// Try to receive from the UDP data port.
+		if ((bytesReceived = recvfrom(instance->dataSocket, instance->backBuffer, SERVER_DATA_BUFFER_SIZE - instance->bufferIndex, 0, (sockaddr*)&dataClient, &dataClientSize)) == SOCKET_ERROR) {					// Try to receive from the UDP data port.
 			int error = WSAGetLastError();
 			switch (error) {
 			case WSAEWOULDBLOCK:
@@ -127,8 +128,24 @@ void TelecastStream::data(TelecastStream* instance) {
 		if (dataClient == instance->currentClient) {															// TODO: Do I have to compare lengths too? Does that make any sense?
 			// TODO: The above won't work with !=. Figure out why.
 			instance->bufferIndex += bytesReceived;
+
+			if (instance->bufferIndex == SERVER_DATA_BUFFER_SIZE) {												// If the buffer is complete. Do a buffer swap for double buffering and start drawing on the other one.
+				while (instance->isFrontBufferValid) { }														// Only swap the buffers if the drawing code if done with the front buffer.
+				
+				char* temp = instance->frontBuffer;
+				instance->frontBuffer = instance->backBuffer;
+				instance->backBuffer = temp;
+
+				instance->isFrontBufferValid = true;															// Set flag so that drawing code knows when it's safe to draw the frame.
+
+				instance->bufferIndex = 0;
+			}
 		}
 	}
+
+	// If we shouldn't receive data anymore, dispose all our resources.
+	shutdown(instance->dataSocket, SD_BOTH);
+	closesocket(instance->dataSocket);
 }
 
 void TelecastStream::metadata(TelecastStream* instance) {
@@ -174,10 +191,13 @@ void TelecastStream::metadata(TelecastStream* instance) {
 	}
 }
 
-void TelecastStream::release() {
-	dataThread.join();													// TODO: Make sure that this doesn't do anything bad if the thread is already joined.
+void TelecastStream::close() {
+	shouldReceiveMetadata = false;
 	metadataThread.join();
+
+	shouldReceiveData = false;
+	dataThread.join();													// TODO: Make sure that this doesn't do anything bad if the thread is already joined.
 	// There is no release method, we have to wait for the destructors to be called.
-	buffer = nullptr;																								// We use this as the flag for preventing double releases.
+	backBuffer = nullptr;																								// We use this as the flag for preventing double releases.
 }
-TelecastStream::~TelecastStream() { if (buffer) { release(); } }
+TelecastStream::~TelecastStream() { if (backBuffer) { close(); } }
