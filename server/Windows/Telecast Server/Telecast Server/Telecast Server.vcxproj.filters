@@ -35,9 +35,6 @@
     <ClInclude Include="storage\Store.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="networking\networkInit.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="networking\discovery.h">
       <Filter>Header Files</Filter>
     </ClInclude>

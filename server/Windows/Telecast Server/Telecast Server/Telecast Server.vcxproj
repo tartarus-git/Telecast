@@ -151,7 +151,6 @@
     <ClInclude Include="debugging.h" />
     <ClInclude Include="defines.h" />
     <ClInclude Include="networking\discovery.h" />
-    <ClInclude Include="networking\networkInit.h" />
     <ClInclude Include="storage\Store.h" />
     <ClInclude Include="stream\TelecastStream.h" />
   </ItemGroup>

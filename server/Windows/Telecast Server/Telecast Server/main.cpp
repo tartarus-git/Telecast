@@ -4,7 +4,6 @@
 #include <thread>
 
 #include "storage/Store.h"																				// So that we can access important global variables.
-#include "networking/networkInit.h"
 #include "networking/discovery.h"
 #include "stream/TelecastStream.h"
 #include "debugging.h"																					// Debug helpers.
@@ -67,8 +66,15 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, wchar_t* lpCmd
 	LOG("Entered wWinMain entry point. Using unicode...");
 #else
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, char* lpCmdLine, int nCmdShow) {
-	LOG("Entered WinMain entry point. Using ansi...");
+	LOG("Entered WinMain entry point. Using ANSI...");
 #endif
+
+	LOG("Initializing networking system...");
+	if (WSAStartup(MAKEWORD(2, 2), &Store::wsaData) == SOCKET_ERROR) {											// Initialize WinSock2. // TODO: Find out what this function actually does. Like why is it needed?
+		LOG("Failed to initialize WinSock2. Error code: ");
+		LOGNUM(WSAGetLastError());
+		return 0;
+	}
 
 	LOG("Creating window class...");
 	WNDCLASS windowClass = { };																					// Create WNDCLASS structure.
@@ -89,12 +95,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, char* lpCmdLine
 		return 0;
 	}
 
-	LOG("Initializing networking system...");
-	if (!initNetwork()) {
-		LOG("Couldn't initialize networking system. Terminating...");
-		return 0;																								// Couldn't find anything about needing to release or destroy the window, so I'm not going to.
-	}
-
 	LOG("Initializing graphics...");
 	std::thread graphicsThread(graphicsLoop);
 
@@ -104,10 +104,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, char* lpCmdLine
 	LOG("Starting Telecast stream...");
 	mainStream = TelecastStream(SERVER_DATA_PORT, SERVER_METADATA_PORT);
 
+	initializeLocalDiscoveryAddress();																			// Set up the address which will be used for the discovery listening and responding.
+
 	LOG("Starting discovery responder thread...");
+	setupDiscoveryResponderSocket();																			// Initialize the socket and set it to nonblocking. Also binds it to the discovery address.
 	discoveryResponderThread = std::thread(respondToDiscoveries);												// Start responder thread first so that the buffer can be emptied ASAP when listener is turned on.
 	
 	LOG("Starting discovery listener thread...");
+	setupDiscoveryListenerSocket();																				// Initialize the socket and set it to nonblocking. Also binds it to the discovery address.
 	discoveryListenerThread = std::thread(listenForDiscoveries);												// Start listener thread to listen for discovery broadcasts.
 
 	LOG("Running message loop...");
