@@ -55,17 +55,18 @@ TelecastStream::TelecastStream(u_short dataPort, u_short metadataPort) {
 	// TODO: Is there any way to shrink this long and annoying code into something more portable or something?
 
 	// Stream data socket setup.
-	if (dataSocket = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP) == SOCKET_ERROR) {
+	if ((dataSocket = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP)) == SOCKET_ERROR) {
 		LOG("Encountered error while initializing the stream data socket. Error code: ");
 		LOGNUM(WSAGetLastError());
-		ASSERT(true);
+		ASSERT(false);
 	}
 
-	if (ioctlsocket(dataSocket, FIONBIO, (u_long*)Store::nonblocking) == SOCKET_ERROR) {																		// Even though this looks weird, from what I could find in the docs, this function does not try to modify the nonblocking variable.
+	u_long nonblocking = true;
+	if (ioctlsocket(dataSocket, FIONBIO, &nonblocking) == SOCKET_ERROR) {																		// Even though this looks weird, from what I could find in the docs, this function does not try to modify the nonblocking variable.
 		LOG("Encountered error while setting the stream data socket to non-blocking. Error code: ");
 		LOGNUM(WSAGetLastError());
 		closesocket(dataSocket);
-		ASSERT(true);
+		ASSERT(false);
 	}
 
 	if (bind(dataSocket, (const sockaddr*)&dataAddress, sizeof(dataAddress)) == SOCKET_ERROR) {
@@ -100,9 +101,26 @@ TelecastStream::TelecastStream(u_short dataPort, u_short metadataPort) {
 	metadataThread = std::thread(metadata, this);
 }
 
-TelecastStream& TelecastStream::operator=(TelecastStream&& other) noexcept {
+TelecastStream& TelecastStream::operator=(TelecastStream&& other) noexcept {																			// TODO: This is a lot of stuff to copy, consider making an initialize function so that we don't have to copy everything from the temporary.
+	dataAddress = other.dataAddress;
+	metadataAddress = other.metadataAddress;
+
+	networkStatusMonitorThread = std::move(other.networkStatusMonitorThread);
+
 	dataThread = std::move(other.dataThread);
 	metadataThread = std::move(other.dataThread);
+
+	frontBuffer = other.frontBuffer;
+	backBuffer = other.backBuffer;
+
+	currentClient = other.currentClient;
+
+	size = other.size;
+
+	isFrontBufferValid = other.isFrontBufferValid;
+
+	isExperiencingNetworkIssues = other.isExperiencingNetworkIssues;
+
 	other.backBuffer = nullptr;
 	return *this;
 }
@@ -110,19 +128,14 @@ TelecastStream& TelecastStream::operator=(TelecastStream&& other) noexcept {
 void TelecastStream::networkStatusMonitor(TelecastStream* instance) {
 	while (instance->shouldMonitorNetworkStatus) {
 		if (instance->networkError) {																					// If the networkError flag is set, shutdown data and metadata threads.
-			if (instance->shouldReceiveData) {
-				instance->shouldReceiveData = false;
-				instance->dataThread.join();
-				break;
-			}
-			if (instance->shouldReceiveMetadata) {
-				instance->shouldReceiveMetadata = true;
-				instance->metadataThread.join();
-				break;
-			}
+			instance->shouldReceiveMetadata = false;
+			instance->metadataThread.join();
+			instance->shouldReceiveData = false;
+			instance->dataThread.join();
+			instance->isExperiencingNetworkIssues = true;																// Set the public network issues flag to true so the main network manager can see it.
+			return;
 		}
 	}
-	instance->isExperiencingNetworkIssues = true;																		// Set the public network issues flag to true so the main network manager can see it.
 }
 
 void TelecastStream::data(TelecastStream* instance) {
@@ -134,20 +147,18 @@ void TelecastStream::data(TelecastStream* instance) {
 		if ((bytesReceived = recvfrom(instance->dataSocket, instance->backBuffer, SERVER_DATA_BUFFER_SIZE - instance->bufferIndex, 0, (sockaddr*)&dataClient, &dataClientSize)) == SOCKET_ERROR) {					// Try to receive from the UDP data port.
 			int error = WSAGetLastError();
 			switch (error) {
-			case WSAEWOULDBLOCK:
-				continue;																															// If there is nothing to receive, just keep trying.
+			case WSAEWOULDBLOCK: case WSAEMSGSIZE: continue;																																						// If there is nothing to receive, just keep trying.
+			case WSAENETDOWN: case WSAENETRESET: case WSAETIMEDOUT:
+				instance->networkError = true;
+				return;
 			default:
-				LOG("Encountered error while receiving from the stream origin device. Error code: ");
-				LOGNUM(error);
-				closesocket(instance->dataSocket);
-				return;												// TODO: Handle this gracefully and synchronize exit with the metadata socket.
+				LOGERROR("Unhandled error message while receiving data from stream source.", error);																												// Break if the winsock call throws any sort of unhandled error.
 			}
 		}
 
 		// If nothing goes wrong, make sure that the data client is the same client as the metadata client.
 		// The following has to be checked every time because of UDP socket.
 		if (dataClient == instance->currentClient) {															// TODO: Do I have to compare lengths too? Does that make any sense?
-			// TODO: The above won't work with !=. Figure out why.
 			instance->bufferIndex += bytesReceived;
 
 			if (instance->bufferIndex == SERVER_DATA_BUFFER_SIZE) {												// If the buffer is complete. Do a buffer swap for double buffering and start drawing on the other one.
@@ -159,14 +170,13 @@ void TelecastStream::data(TelecastStream* instance) {
 
 				instance->isFrontBufferValid = true;															// Set flag so that drawing code knows when it's safe to draw the frame.
 
-				instance->bufferIndex = 0;
+				instance->bufferIndex = 0;																		// Set the index so that a new image is written on top of the old one in the back buffer.
 			}
 		}
 	}
 
-	// If we shouldn't receive data anymore, dispose all our resources.
-	shutdown(instance->dataSocket, SD_BOTH);
-	closesocket(instance->dataSocket);
+	// If we shouldn't receive data anymore, shutdown the socket. Don't close yet because we might start up again.
+	shutdown(instance->dataSocket, SD_RECEIVE);																	// Shutdown the receive side of the socket since we're not sending anything.
 }
 
 void TelecastStream::metadata(TelecastStream* instance) {
@@ -207,7 +217,6 @@ void TelecastStream::metadata(TelecastStream* instance) {
 			continue;
 		}
 		shutdown(instance->metadataSocket, SD_BOTH);
-		closesocket(instance->metadataSocket);
 		return;
 	}
 }
@@ -239,8 +248,16 @@ void TelecastStream::restart() {																						// Restart necessary syste
 
 void TelecastStream::close() {
 	halt();																												// Halt threads.
+	shouldMonitorNetworkStatus = false;
+	networkStatusMonitorThread.join();
 	closesocket(metadataSocket);																						// Close sockets. This releases used resources.
 	closesocket(dataSocket);
+
+	delete[] backBuffer;																								// Release heap-allocated buffers.
+	delete[] frontBuffer;
+
+	// TODO: Do you have to release something with the sockaddr's? I thought you did. Look that up.
+
 	backBuffer = nullptr;																								// We use this as the flag for preventing double releases.
 }
 TelecastStream::~TelecastStream() { if (backBuffer) { close(); } }
