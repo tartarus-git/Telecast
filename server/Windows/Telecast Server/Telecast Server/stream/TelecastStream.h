@@ -46,6 +46,8 @@ public:
 	// Status flag for when the Telecast stream is experiencing network problems.
 	bool isExperiencingNetworkIssues = false;
 
+	void halt();														// If any sort of error happens where the stream needs to be halted but the sockets can be reused later. Call this. Halts data and metadata threads. Network monitor thread is left intact.
+
 	static void networkStatusMonitor(TelecastStream* instance);
 
 	static void data(TelecastStream* instance);
@@ -56,7 +58,6 @@ public:
 
 	TelecastStream& operator=(TelecastStream&& other) noexcept;
 
-	void halt();														// If any sort of error happens where the stream needs to be halted but the sockets can be reused later. Call this. Halts threads.
 	void restart();														// This needs to be called after calling halt in order to use the resources to restart the stream systems.
 
 	void close();
