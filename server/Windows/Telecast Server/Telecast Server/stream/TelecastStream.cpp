@@ -216,9 +216,10 @@ void TelecastStream::metadata(TelecastStream* instance) {
 			LOGERROR("Unhandled error on listen in metadata thread in TelecastStream.", error);
 		}
 	}
+	SOCKET metadataConnection;
 	while (instance->shouldReceiveMetadata) {
 		// Save the current client for security reasons. We can't be streaming data from someone other than who we're getting metadata from.
-		if (accept(instance->metadataSocket, (sockaddr*)&instance->currentClient, &instance->currentClientSize) == SOCKET_ERROR) {			// Be ready to accept a connection to the metadata socket.
+		if ((metadataConnection = accept(instance->metadataSocket, (sockaddr*)&instance->currentClient, &instance->currentClientSize)) == INVALID_SOCKET) {			// Be ready to accept a connection to the metadata socket.
 			int error = WSAGetLastError();
 			switch (error) {
 			case WSAEWOULDBLOCK: continue;																							// If nothing to accept, keep trying.
@@ -231,13 +232,16 @@ void TelecastStream::metadata(TelecastStream* instance) {
 		}
 
 		// Once were here, something has been accepted.
-		if (recv(instance->metadataSocket, (char*)&instance->size, sizeof(instance->size), 0) == SOCKET_ERROR) {
+		if (recv(metadataConnection, (char*)&instance->size, sizeof(instance->size), 0) == SOCKET_ERROR) {														// Attempt to receive something from the newly created metadata connection.
 			int error = WSAGetLastError();
 			switch (error) {
-			case WSAEWOULDBLOCK: case WSAEMSGSIZE: continue;																				// If the socket doesn't get anything or if the socket gets to much and it doesn't fit in the buffer, just drop whatever it was and try again.
-			case WSAENETDOWN: case WSAENETRESET: case WSAECONNABORTED
+			case WSAEWOULDBLOCK: case WSAEMSGSIZE: continue;																									// If the socket doesn't get anything or if the socket gets to much and it doesn't fit in the buffer, just drop whatever it was and try again.
+			case WSAENETDOWN: case WSAENETRESET:																												// If there are network issues, let the network monitor handle it and exit the thread.
 				instance->networkError = true;
 				return;
+			case WSAETIMEDOUT: case WSAECONNRESET:																												// If something goes wrong with just this single connection, just drop it and accept a new connection.
+				closesocket(metadataConnection);
+				continue;
 			}
 		}
 
@@ -254,34 +258,47 @@ void TelecastStream::metadata(TelecastStream* instance) {
 	}
 }
 
-void TelecastStream::restart() {																						// Restart necessary systems in order to get stream back up after usage of halt.
-	if (bind(dataSocket, (const sockaddr*)&dataAddress, sizeof(metadataAddress)) == SOCKET_ERROR) {						// Bind the data socket.
-		LOG("Encountered error while binding stream data socket. Error code: ");
-		LOGNUM(WSAGetLastError());
-		ASSERT(true);
+void TelecastStream::restart() {																																// Restart necessary systems in order to get stream back up after nework issues have waited out.
+	shouldMonitorNetworkStatus = true;																															// Start the network monitor super early in case network problems come back and mess the following binds up.
+	networkStatusMonitorThread = std::thread(networkStatusMonitor, this);
+
+	if (bind(dataSocket, (const sockaddr*)&dataAddress, sizeof(metadataAddress)) == SOCKET_ERROR) {																// Bind the TCP data socket.
+		int error = WSAGetLastError();
+		switch (error) {
+		case WSAENETDOWN:																																		// If network issues are already back, let the network monitor handle it.
+			networkError = true;
+			return;
+		default:
+			LOGERROR("Unhandled error while binding UDP data socket while restarting in TelecastStream.", error);
+		}
 	}
-	if (bind(metadataSocket, (const sockaddr*)&metadataAddress, sizeof(metadataAddress)) == SOCKET_ERROR) {				// Bind the metadata socket.
-		LOG("Encountered error while binding stream metadata socket. Error code: ");
-		LOGNUM(WSAGetLastError());
-		ASSERT(true);
+	if (bind(metadataSocket, (const sockaddr*)&metadataAddress, sizeof(metadataAddress)) == SOCKET_ERROR) {														// Bind the UDP metadata socket.
+		int error = WSAGetLastError();
+		switch (error) {
+		case WSAENETDOWN:																																		// If network issues are already back, let the network monitor handle it.
+			networkError = true;
+			return;
+		default:
+			LOGERROR("Unhandled error while binding TCP metadata socket while restarting in TelecastStream.", error);
+		}
 	}
 
-	shouldReceiveMetadata = true;																						// Restart data and metadata threads.
+	shouldReceiveMetadata = true;																																// Restart the metadata thread.
 	metadataThread = std::thread(metadata, this);
-	shouldReceiveData = true;
+	shouldReceiveData = true;																																	// Restart the data thread.
 	dataThread = std::thread(data, this);
 }
 
 void TelecastStream::close() {
-	halt();																												// Halt data and metadata threads.
-	shouldMonitorNetworkStatus = false;																					// Start turning off the network monitor thread.
+	halt();																																						// Halt data and metadata threads.
+	shouldMonitorNetworkStatus = false;																															// Start turning off the network monitor thread.
 	networkStatusMonitorThread.join();
-	closesocket(metadataSocket);																						// Close sockets. This releases used resources.
+	closesocket(metadataSocket);																																// Close sockets. This releases used resources.
 	closesocket(dataSocket);
 
-	delete[] backBuffer;																								// Release heap-allocated buffers.
+	delete[] backBuffer;																																		// Release heap-allocated buffers.
 	delete[] frontBuffer;
 
-	backBuffer = nullptr;																								// We use this as the flag for preventing double releases.
+	backBuffer = nullptr;																																		// We use this as the flag for preventing double releases.
 }
-TelecastStream::~TelecastStream() { if (backBuffer) { close(); } }														// If this class hasn't already been closed, automatically close and dispose everything.
+TelecastStream::~TelecastStream() { if (backBuffer) { close(); } }																								// If this class hasn't already been closed, automatically close and dispose everything.
