@@ -26,7 +26,8 @@ inline void logNum(int32_t num) {
 	else { isNegative = false; }
 
 	int index = NUM_BUFFER_SIZE - 3;
-	&numBuffer[NUM_BUFFER_SIZE - 2] = "\n\0";																			// Insert a newline and a NUL character at what will be the end of the string.
+	numBuffer[NUM_BUFFER_SIZE - 2] = '\n';																						// Insert a newline and a NUL character at what will be the end of the string.
+	numBuffer[NUM_BUFFER_SIZE - 1] = '\0';
 	while (true) {														// TODO: Is this the best way to do this? Look it up online and see what other possibilities there are.
 		int32_t temp = num;
 		num /= 10;

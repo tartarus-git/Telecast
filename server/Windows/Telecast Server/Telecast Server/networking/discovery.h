@@ -25,7 +25,7 @@ inline void setupDiscoveryListenerSocket() {
 	if (discoveryListener = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP) == INVALID_SOCKET) {													// Initialize the discovery listener socket. This will listen for discovery broacasts.
 		LOG("Failed to initialize discovery listener socket. Error code: ");								// TODO: Actually handle the errors that can happen here.
 		LOGNUM(WSAGetLastError());
-		ASSERT(true);
+		ASSERT(false);
 	}
 
 	// TODO: Seems like this call wants to set the nonblocking variable. Why is that. Read the docs.
@@ -33,14 +33,14 @@ inline void setupDiscoveryListenerSocket() {
 		LOG("Failed to set the discovery listener socket so non-blocking. Error code: ");					// TODO: Do actual error handling here eventually.
 		LOGNUM(WSAGetLastError());
 		closesocket(discoveryListener);																										// Free resources of the listener socket before asserting.
-		ASSERT(true);
+		ASSERT(false);
 	}
 
 	if (bind(discoveryListener, (const sockaddr*)&discoveryAddress, sizeof(discoveryAddress)) == SOCKET_ERROR) {							// Bind the discovery listener socket.
 		LOG("Failed to bind the discovery listener socket. Error code: ");
 		LOGNUM(WSAGetLastError());
 		closesocket(discoveryListener);
-		ASSERT(true);																						// TODO: Do actual error handling for this eventually.
+		ASSERT(false);																						// TODO: Do actual error handling for this eventually.
 	}
 }
 
@@ -49,7 +49,7 @@ inline void setupDiscoveryResponderSocket() {
 	if (discoveryResponder = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP) == INVALID_SOCKET) {												// Initialize the discovery responder socket. This will send TCP responses to UDP multicast discoveries.
 		LOG("Failed to initialize discovery responder socket. Error code: ");
 		LOGNUM(WSAGetLastError());
-		ASSERT(true);																						// TODO: Do actual error handling for this eventually.
+		ASSERT(false);																						// TODO: Do actual error handling for this eventually.
 	}
 
 	// TODO: Figure out why this function could edit the nonblocking thing.
@@ -57,14 +57,14 @@ inline void setupDiscoveryResponderSocket() {
 		LOG("Failed to set the discovery responder socket to non-blocking. Error code: ");
 		LOGNUM(WSAGetLastError());
 		closesocket(discoveryResponder);
-		ASSERT(true);																						// TODO: Do actual error handling for this eventually.
+		ASSERT(false);																						// TODO: Do actual error handling for this eventually.
 	}
 
 	if (bind(discoveryResponder, (const sockaddr*)&discoveryAddress, sizeof(discoveryAddress)) == SOCKET_ERROR) {							// Bind the discovery responder socket.
 		LOG("Failed to bind the discovery responder socket. Error code: ");
 		LOGNUM(WSAGetLastError());
 		closesocket(discoveryResponder);
-		ASSERT(true);
+		ASSERT(false);
 	}
 }
 
@@ -108,7 +108,7 @@ inline void listenForDiscoveries() {																					// Listen for incoming 
 			default:
 				LOG("Unhandled error encountered while trying to receive discovery broadcasts. Error code: ");
 				LOGNUM(error);
-				ASSERT(true);
+				ASSERT(false);
 			}
 		}
 
@@ -139,7 +139,7 @@ inline void respondToDiscoveries() {																					// Respond to UDP disco
 			default:
 				LOG("Unhandled error encountered while trying to connect to discoverer. Error code: ");
 				LOGNUM(error);
-				ASSERT(true);
+				ASSERT(false);
 			}
 		}
 
@@ -157,7 +157,7 @@ inline void respondToDiscoveries() {																					// Respond to UDP disco
 			default:
 				LOG("Unhandled error encountered while trying to send a response to discoverer. Error code: ");
 				LOGNUM(error);
-				ASSERT(true);
+				ASSERT(false);
 			}
 		}
 
