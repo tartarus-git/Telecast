@@ -2,6 +2,7 @@
 #include <ws2tcpip.h>
 
 #include <thread>
+#include <chrono>
 
 #include "storage/Store.h"																				// So that we can access important global variables.
 #include "networking/discovery.h"
@@ -47,7 +48,10 @@ void monitorForNetworkErrors() {																		// Thread, which resets necess
 			shouldDiscoveryRespondRun = false;
 			discoveryResponderThread.join();
 		}
-		else { continue; }
+		else {
+			std::this_thread::sleep_for(std::chrono::milliseconds(MAIN_NETWORK_MONITOR_THREAD_SLEEP));
+			continue;
+		}
 		ASSERT(false);																					// Wait for the network to return to a usable state.
 		mainStream.start();																				// Restart the stream.
 		discoveryResponderThread = std::thread(listenForDiscoveries);									// Restart the discovery responder and listener.
@@ -160,6 +164,7 @@ void graphicsLoop() {
 			// Copy one the memoryDC to the actual window DC.
 			// Use zoom algorithm to fit the received image onto whatever actual dimensions we've got for the window.
 		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(GRAPHICS_THREAD_SLEEP));
 	}
 
 	DeleteObject(bmp);

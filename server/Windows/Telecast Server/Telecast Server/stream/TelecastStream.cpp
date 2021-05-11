@@ -204,7 +204,9 @@ void TelecastStream::data(TelecastStream* instance) {
 		if ((bytesReceived = recvfrom(instance->dataSocket, instance->backBuffer, SERVER_DATA_BUFFER_SIZE - instance->bufferIndex, 0, (sockaddr*)&dataClient, &dataClientSize)) == SOCKET_ERROR) {					// Try to receive from the UDP data port.
 			int error = WSAGetLastError();
 			switch (error) {
-			case WSAEWOULDBLOCK: case WSAEMSGSIZE: continue;																																						// If there is nothing to receive, just keep trying.
+			case WSAEWOULDBLOCK: case WSAEMSGSIZE:
+				std::this_thread::sleep_for(std::chrono::milliseconds(DATA_THREAD_ON_BLOCK_SLEEP));
+				continue;																																						// If there is nothing to receive, just keep trying.
 			case WSAENETDOWN: case WSAENETRESET: case WSAETIMEDOUT: goto networkError;																																// If network problems, let this function's network error handler take care of it.
 			default:
 				LOGERROR("Unhandled error message while receiving data from stream source.", error);
@@ -257,7 +259,9 @@ void TelecastStream::metadata(TelecastStream* instance) {
 		if ((metadataConnection = accept(instance->metadataListenerSocket, (sockaddr*)&instance->currentClient, &instance->currentClientSize)) == INVALID_SOCKET) {			// Be ready to accept a new metadata connection. Save the client so that the UDP data socket knows which client to whitelist.
 			int error = WSAGetLastError();
 			switch (error) {
-			case WSAEWOULDBLOCK: case WSAECONNRESET: continue;																												// If nothing is there to accept or if something goes wrong with the accept, just discard the client and try again.
+			case WSAEWOULDBLOCK: case WSAECONNRESET:
+				std::this_thread::sleep_for(std::chrono::milliseconds(METADATA_THREAD_ON_BLOCK_SLEEP));
+				continue;																												// If nothing is there to accept or if something goes wrong with the accept, just discard the client and try again.
 			case WSAENETDOWN: goto networkError;																															// If a network error occurs, goto the network error handling part of this functions code.
 			default:
 				LOGERROR("Unhandled error while accepting metadata connection in discovery.", error);
@@ -268,7 +272,9 @@ void TelecastStream::metadata(TelecastStream* instance) {
 		if (recv(metadataConnection, (char*)&instance->size, sizeof(instance->size), 0) == SOCKET_ERROR) {														// Attempt to receive something from the newly created metadata connection.
 			int error = WSAGetLastError();
 			switch (error) {
-			case WSAEWOULDBLOCK: case WSAEMSGSIZE: continue;																									// If the socket doesn't get anything or if the socket gets to much and it doesn't fit in the buffer, just drop whatever it was and try again.
+			case WSAEWOULDBLOCK: case WSAEMSGSIZE:
+				std::this_thread::sleep_for(std::chrono::milliseconds(METADATA_THREAD_ON_BLOCK_SLEEP));
+				continue;																									// If the socket doesn't get anything or if the socket gets to much and it doesn't fit in the buffer, just drop whatever it was and try again.
 			case WSAENETDOWN: case WSAENETRESET:																												// If there are network issues, goto the network error handling part of this functions code. Close the connection socket first.
 				closesocket(metadataConnection);				// TODO: Handle whatever errors could come out of this one.
 				goto networkError;

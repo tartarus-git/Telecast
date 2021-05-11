@@ -3,11 +3,16 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
+#include <thread>
+#include <chrono>
+
 #include "debugging.h"																														// Defines useful macros for debugging.
 
 #include "defines.h"																														// Useful defines.
 
 #pragma comment(lib, "Ws2_32.lib")
+
+#define DISCOVERY_THREAD_ON_BLOCK_SLEEP 1000																								// The amount of time the discovery threads sleep if one of their calls would block in milliseconds.
 
 static const char* discoveryResponse;																					// TODO: Read this from a setup file eventually.
 
@@ -125,7 +130,9 @@ inline void listenForDiscoveries() {																					// Listen for incoming 
 			(sockaddr*)(discoverers + pendingDiscoverersIndex), &addressSize) == SOCKET_ERROR) {
 			int error = WSAGetLastError();
 			switch (error) {
-			case WSAEWOULDBLOCK: case WSAEMSGSIZE: goto receive;														// If nothing is received or msg is too long, try receiving again. Skip the buffer check.
+			case WSAEWOULDBLOCK: case WSAEMSGSIZE:
+				std::this_thread::sleep_for(std::chrono::milliseconds(DISCOVERY_THREAD_ON_BLOCK_SLEEP));
+				goto receive;														// If nothing is received or msg is too long, try receiving again. Skip the buffer check.
 			case WSAENETDOWN:																							// If the network is down, unset run flag and exit this thread. Network monitor will handle it.
 				shouldDiscoveryListenRun = false;
 				return;																																						// Make sure to return if the network fails, because or else the socket gets closed at the end of this function.
@@ -155,7 +162,9 @@ inline void respondToDiscoveries() {																					// Respond to UDP disco
 		if (connect(discoveryResponder, (const sockaddr*)(discoverers + closedDiscoverersIndex), sizeof(sockaddr_in6)) == SOCKET_ERROR) {									// Connect to the source of the broadcast and send a response through TCP.
 			int error = WSAGetLastError();
 			switch (error) {
-			case WSAEWOULDBLOCK: goto connect;
+			case WSAEWOULDBLOCK:
+				std::this_thread::sleep_for(std::chrono::milliseconds(DISCOVERY_THREAD_ON_BLOCK_SLEEP));
+				goto connect;
 			case WSAETIMEDOUT: case WSAEHOSTUNREACH: case WSAECONNREFUSED:
 				incrementClosed();
 				continue;
@@ -173,7 +182,9 @@ inline void respondToDiscoveries() {																					// Respond to UDP disco
 		if (send(discoveryResponder, discoveryResponse, sizeof(discoveryResponse), 0) == SOCKET_ERROR) {
 			int error = WSAGetLastError();
 			switch (error) {
-			case WSAEWOULDBLOCK: goto send;
+			case WSAEWOULDBLOCK:
+				std::this_thread::sleep_for(std::chrono::milliseconds(DISCOVERY_THREAD_ON_BLOCK_SLEEP));
+				goto send;
 			case WSAETIMEDOUT: case WSAECONNABORTED: case WSAEHOSTUNREACH: 
 				incrementClosed();
 				continue;

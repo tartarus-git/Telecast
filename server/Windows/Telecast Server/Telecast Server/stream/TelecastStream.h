@@ -8,6 +8,8 @@
 #include "defines.h"
 
 #define NETWORK_MONITOR_THREAD_SLEEP 1000																					// In milliseconds.
+#define DATA_THREAD_ON_BLOCK_SLEEP 1000																						// In milliseconds.
+#define METADATA_THREAD_ON_BLOCK_SLEEP 1000																					// In milliseconds.
 
 class TelecastStream {
 private:
