@@ -7,6 +7,8 @@
 
 #include "defines.h"
 
+#define NETWORK_MONITOR_THREAD_SLEEP 1000																					// In milliseconds.
+
 class TelecastStream {
 private:
 	// Addresses.
@@ -22,9 +24,9 @@ private:
 	bool shouldMonitorNetworkStatus;
 	std::thread networkStatusMonitorThread;
 
-	bool shouldReceiveData = false;
+	bool shouldReceiveData;
 	std::thread dataThread;
-	bool shouldReceiveMetadata = true;
+	bool shouldReceiveMetadata;
 	std::thread metadataThread;
 
 	// Stream data.
@@ -46,7 +48,7 @@ public:
 	bool isFrontBufferValid = false;
 
 	// Status flag for when the Telecast stream is experiencing network problems.
-	bool isExperiencingNetworkIssues = false;
+	bool isExperiencingNetworkIssues;
 
 	bool isValid();
 

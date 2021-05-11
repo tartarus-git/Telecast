@@ -49,7 +49,7 @@ void monitorForNetworkErrors() {																		// Thread, which resets necess
 		}
 		else { continue; }
 		ASSERT(false);																					// Wait for the network to return to a usable state.
-		mainStream.restart();																			// Restart the stream.
+		mainStream.start();																				// Restart the stream.
 		discoveryResponderThread = std::thread(listenForDiscoveries);									// Restart the discovery responder and listener.
 		discoveryListenerThread = std::thread(respondToDiscoveries);
 	}
@@ -101,24 +101,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, char* lpCmdLine
 	LOG("Starting network error monitoring system...");
 	std::thread networkMonitoringThread(monitorForNetworkErrors);
 
-	LOG("Initializing Telecast stream...");
-	mainStream = TelecastStream(SERVER_DATA_PORT, SERVER_METADATA_PORT);										// Set up the TelecastStream stuff. Keep trying until it works.
-	while (!mainStream.isValid()) {
-		// TODO: Wait for network to come back before calling it again.
-		mainStream = TelecastStream(SERVER_DATA_PORT, SERVER_METADATA_PORT);
-	}
+	LOG("Starting the Telecast stream...");
+	mainStream = TelecastStream(SERVER_DATA_PORT, SERVER_METADATA_PORT);
 
-	LOG("Initializing discovery responder socket...");
-	setupDiscoveryResponderSocket();
-
-	LOG("Initializing discovery listener socket...");
+	LOG("Initializing discovery address...");
 	initializeLocalDiscoveryAddress();
 
 	LOG("Starting discovery responder thread...");
 	discoveryResponderThread = std::thread(respondToDiscoveries);												// Start responder thread first so that the buffer can be emptied ASAP when listener is turned on.
 	
 	LOG("Starting discovery listener thread...");
-	setupDiscoveryListenerSocket();																				// Initialize the socket and set it to nonblocking. Also binds it to the discovery address.
 	discoveryListenerThread = std::thread(listenForDiscoveries);												// Start listener thread to listen for discovery broadcasts.
 
 	LOG("Running message loop...");
@@ -145,7 +137,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, char* lpCmdLine
 	if (WSACleanup() == SOCKET_ERROR) {
 		int error = WSAGetLastError();
 		switch (error) {
-		case WSAENETDOWN: return;
+		case WSAENETDOWN: return 0;
 		default:
 			LOGERROR("Unhandled error after calling WSACleanup().", error);
 		}

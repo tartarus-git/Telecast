@@ -21,8 +21,9 @@ inline void initializeLocalDiscoveryAddress() {
 }
 
 SOCKET discoveryListener;
+bool shouldDiscoveryListenRun = true;																										// Flag for telling the discovery listener when to stop.
 inline void setupDiscoveryListenerSocket() {
-	if (discoveryListener = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP) == INVALID_SOCKET) {													// Initialize the discovery listener socket. This will listen for discovery broacasts.
+	if ((discoveryListener = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP)) == INVALID_SOCKET) {													// Initialize the discovery listener socket. This will listen for discovery broacasts.
 		int error = WSAGetLastError();
 		switch (error) {
 		case WSAENETDOWN:																													// If network issues are present, let the network monitor know.
@@ -50,6 +51,7 @@ inline void setupDiscoveryListenerSocket() {
 		switch (error) {
 		case WSAENETDOWN:
 			shouldDiscoveryListenRun = false;
+			return;
 		default:
 			LOGERROR("Unhandled error while binding UDP discovery listener.", error);																				// TODO: Unrelated, make sure the error logs in the TelecastStream class say metadata listener socket, because that's what it is.
 		}
@@ -57,26 +59,40 @@ inline void setupDiscoveryListenerSocket() {
 }
 
 SOCKET discoveryResponder;
+bool shouldDiscoveryRespondRun = true;																										// Flag for telling the discovery responder when to stop. Is changed by the main thread.
 inline void setupDiscoveryResponderSocket() {
-	if (discoveryResponder = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP) == INVALID_SOCKET) {												// Initialize the discovery responder socket. This will send TCP responses to UDP multicast discoveries.
-		LOG("Failed to initialize discovery responder socket. Error code: ");
-		LOGNUM(WSAGetLastError());
-		ASSERT(false);																						// TODO: Do actual error handling for this eventually.
+	if ((discoveryResponder = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP)) == INVALID_SOCKET) {												// Initialize the discovery responder socket. This will send TCP responses to UDP multicast discoveries.
+		int error = WSAGetLastError();
+		switch (error) {
+		case WSAENETDOWN:																													// If network issues are present, let the network monitor know.
+			shouldDiscoveryListenRun = false;
+			return;
+		default:
+			LOGERROR("Unhandled error while initializing TCP discovery responder.", error);
+		}
 	}
 
-	// TODO: Figure out why this function could edit the nonblocking thing.
-	if (ioctlsocket(discoveryResponder, FIONBIO, (u_long*)&Store::nonblocking) == SOCKET_ERROR) {											// Set the discovery responder socket to nonblocking.
-		LOG("Failed to set the discovery responder socket to non-blocking. Error code: ");
-		LOGNUM(WSAGetLastError());
-		closesocket(discoveryResponder);
-		ASSERT(false);																						// TODO: Do actual error handling for this eventually.
+	u_long nonblocking = true;
+	if (ioctlsocket(discoveryResponder, FIONBIO, &nonblocking) == SOCKET_ERROR) {															// Set the TCP discovery responder socket to nonblocking.
+		int error = WSAGetLastError();
+		switch (error) {
+		case WSAENETDOWN:
+			shouldDiscoveryListenRun = false;
+			return;
+		default:
+			LOGERROR("Unhandled error while setting TCP discovery responder to nonblocking.", error);
+		}
 	}
 
 	if (bind(discoveryResponder, (const sockaddr*)&discoveryAddress, sizeof(discoveryAddress)) == SOCKET_ERROR) {							// Bind the discovery responder socket.
-		LOG("Failed to bind the discovery responder socket. Error code: ");
-		LOGNUM(WSAGetLastError());
-		closesocket(discoveryResponder);
-		ASSERT(false);
+		int error = WSAGetLastError();
+		switch (error) {
+		case WSAENETDOWN:
+			shouldDiscoveryListenRun = false;
+			return;
+		default:
+			LOGERROR("Unhandled error while binding TCP discovery responder.", error);
+		}
 	}
 }
 
@@ -94,7 +110,6 @@ void incrementClosed() {																								// Increment the closed index in
 	closedDiscoverersIndex++;
 }
 
-bool shouldDiscoveryListenRun = true;																					// Flag for telling the discovery listener when to stop. Is changed by main thread.
 inline void listenForDiscoveries() {																					// Listen for incoming UDP discovery broadcasts.
 	setupDiscoveryListenerSocket();																						// Set up the UDP discovery listener socket which will be used here.
 
@@ -128,7 +143,6 @@ inline void listenForDiscoveries() {																					// Listen for incoming 
 	}
 }
 
-bool shouldDiscoveryRespondRun = true;																					// Flag for telling the discovery responder when to stop. Is changed by the main thread.
 inline void respondToDiscoveries() {																					// Respond to UDP discovery broadcasts with TCP messages.
 	setupDiscoveryResponderSocket();																					// Set up the TCP socket used for responding to the broadcasts.
 

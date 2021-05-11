@@ -4,6 +4,7 @@
 #include <ws2tcpip.h>
 
 #include <thread>
+#include <chrono>
 
 #include "storage/Store.h"
 #include "debugging.h"
@@ -40,6 +41,7 @@ bool TelecastStream::isValid() { return backBuffer; }
 
 void TelecastStream::start() {																																		// Actually set up the networking systems required to get a stream up and running.
 	networkError = false;																																			// Start with a clean slate so as to not cause any problems for any of the network issue monitoring code.
+	isExperiencingNetworkIssues = false;																															// Set this flag to false so that outer main network monitor doesn't trigger after this start.
 	shouldMonitorNetworkStatus = true;																																// Start the network monitor so that network issues can be caught.
 	networkStatusMonitorThread = std::thread(networkStatusMonitor, this);
 
@@ -121,7 +123,9 @@ void TelecastStream::start() {																																		// Actually set 
 	}
 
 	// Start threads.
+	shouldReceiveData = true;
 	dataThread = std::thread(data, this);																															// Start the data thread, handles the raw stream data.
+	shouldReceiveMetadata = true;
 	metadataThread = std::thread(metadata, this);																													// Start the metadata thread, handles the logistics of the transmission.
 }
 
@@ -142,9 +146,6 @@ TelecastStream::TelecastStream(u_short dataPort, u_short metadataPort) {
 	// Allocate enough space on the heap for the display data.
 	backBuffer = new char[SERVER_DATA_BUFFER_SIZE];																													// Allocate 2 same-sized buffers so that we can double buffer this.
 	frontBuffer = new char[SERVER_DATA_BUFFER_SIZE];
-
-	// Start network monitor.
-	networkStatusMonitorThread = std::thread(networkStatusMonitor, this);																							// Start the network monitor. This monitors whatever comes after it for network issues and acts if it finds one.
 
 	// Actual network setup.
 	start();																																						// Actually set up the network systems so that we can stream.
@@ -183,15 +184,16 @@ void TelecastStream::halt() {																							// Shutdown the data and met
 
 void TelecastStream::networkStatusMonitor(TelecastStream* instance) {
 	while (instance->shouldMonitorNetworkStatus) {
-		// TODO: This is a terrible thread, definitely put a sleep in here. Use chrono probably.
-
 		if (instance->networkError) {																					// If the networkError flag is set, shutdown data and metadata threads.
 			instance->halt();
-			instance->isExperiencingNetworkIssues = true;																// Set the public network issues flag to true so the main network manager can see it.
+			instance->isExperiencingNetworkIssues = true;																// Set the public network issues flag to true so an outer network manager can see it.		// TODO: Call it outer manager in the whole file, because this class should be portable.
 			return;
 		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(NETWORK_MONITOR_THREAD_SLEEP));							// Sleep for a while at the end of each loop to be nice to the OS and let it do other things more easily.
 	}
 }
+
+// TODO: Reorder things so that they actually make sense in conjunction with the header file.
 
 void TelecastStream::data(TelecastStream* instance) {
 	sockaddr_in6 dataClient;								// TODO: Look into IP-spoofing, how easy is it to get past this simple security system.
