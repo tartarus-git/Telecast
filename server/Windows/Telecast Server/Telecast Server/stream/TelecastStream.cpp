@@ -35,15 +35,105 @@ bool operator==(sockaddr_in6 left, sockaddr_in6 right) {							// TODO: This loo
 }
 bool operator!=(sockaddr_in6 left, sockaddr_in6 right) { return !operator==(left, right); }
 
+void TelecastStream::invalidate() { backBuffer = nullptr; }																											// Call this with caution, if the back buffer is already allocated, then this will cause memory leak.
+bool TelecastStream::isValid() { return backBuffer; }
+
+void TelecastStream::start() {																																		// Actually set up the networking systems required to get a stream up and running.
+	networkError = false;																																			// Start with a clean slate so as to not cause any problems for any of the network issue monitoring code.
+	shouldMonitorNetworkStatus = true;																																// Start the network monitor so that network issues can be caught.
+	networkStatusMonitorThread = std::thread(networkStatusMonitor, this);
+
+	// Stream data socket setup.
+	if ((dataSocket = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP)) == SOCKET_ERROR) {																					// Set up a UDP socket for data transmission.
+		int error = WSAGetLastError();
+		switch (error) {
+		case WSAENETDOWN:
+			networkError = true;																																	// If network issues turn up, let the network status monitor know.
+			return;
+		default:
+			LOGERROR("Unhandled error while initializing UDP data socket while starting in TelecastStream.", error);
+		}
+	}
+
+	u_long nonblocking = true;
+	if (ioctlsocket(dataSocket, FIONBIO, &nonblocking) == SOCKET_ERROR) {																							// Set the data socket to nonblocking. This is necessary so that our logic can work.
+		// NOTE: It looks like the function wants to edit the nonblocking variable, but from what I read in the docs, it doesn't, so don't worry.
+		int error = WSAGetLastError();
+		switch (error) {
+		case WSAENETDOWN:
+			closesocket(dataSocket);				// TODO: Handle the possible errors from this thing.
+			networkError = true;																																	// If network issues turn up, let the network status monitor know after closing the open socket.
+			return;
+		default:
+			LOGERROR("Unhandled error while setting UDP data socket to nonblocking while starting in TelecastStream.", error);
+		}
+	}
+
+	if (bind(dataSocket, (const sockaddr*)&dataAddress, sizeof(dataAddress)) == SOCKET_ERROR) {																		// Bind the UDP data socket.
+		int error = WSAGetLastError();
+		switch (error) {
+		case WSAENETDOWN:																																			// If network issues come up, just release all the stuff you need to release and let the network monitor take it from here.
+			closesocket(dataSocket);
+			networkError = true;
+			return;
+		default:
+			LOGERROR("Unhandled error while binding UDP data socket while starting in TelecastStream.", error);
+		}
+	}
+
+	// Stream metadata listener socket setup.
+	if ((metadataListenerSocket = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP)) == SOCKET_ERROR) {																	// Set up a new TCP socket for metadata listening.
+		int error = WSAGetLastError();
+		switch (error) {
+		case WSAENETDOWN:
+			closesocket(dataSocket);
+			networkError = true;																																	// If network issues turn up, let the network status monitor know after closing the already initialized data socket.
+			return;
+		default:
+			LOGERROR("Unhandled error while initializing TCP metadata listener socket while starting in TelecastStream.", error);
+		}
+	}
+
+	if (ioctlsocket(metadataListenerSocket, FIONBIO, &nonblocking) == SOCKET_ERROR) {																				// Set the TCP metadata socket to nonblocking.
+		int error = WSAGetLastError();
+		switch (error) {
+		case WSAENETDOWN:
+			closesocket(dataSocket);
+			closesocket(metadataListenerSocket);
+			networkError = true;																																	// If network issues turn up, let the network satus monitor know.
+			return;
+		default:
+			LOGERROR("Unhandled error while setting TCP metadata listener socket to nonblocking while starting in TelecastStream.", error);
+		}
+	}
+
+	if (bind(metadataListenerSocket, (const sockaddr*)&metadataAddress, sizeof(metadataAddress)) == SOCKET_ERROR) {													// Bind the UDP metadata listener socket.
+		int error = WSAGetLastError();
+		switch (error) {
+		case WSAENETDOWN:																																			// If network issues are already here, let the network monitor handle it after closing both data and metadata sockets.
+			closesocket(dataSocket);
+			closesocket(metadataListenerSocket);
+			networkError = true;
+			return;
+		default:
+			LOGERROR("Unhandled error while binding TCP metadata listener socket while starting in TelecastStream.", error);
+		}
+	}
+
+	// Start threads.
+	dataThread = std::thread(data, this);																															// Start the data thread, handles the raw stream data.
+	metadataThread = std::thread(metadata, this);																													// Start the metadata thread, handles the logistics of the transmission.
+}
+
 TelecastStream::TelecastStream(u_short dataPort, u_short metadataPort) {
-	// Initialize addresses for the data and metadata sockets.
-	dataAddress = { };
+	// Address setup.
+	dataAddress = { };																																				// Initialize the address that the data socket uses.
 	dataAddress.sin6_family = AF_INET6;
 	dataAddress.sin6_addr = in6addr_any;
 	// TODO: The scope id can be left alone in this case right? Will it just use literal addresses then? What is the scope id?
 	dataAddress.sin6_port = htons(dataPort);														// Converts from host byte order to network byte order (big-endian).
 
-	metadataAddress = { };
+	metadataAddress = { };																																			// Initialize the address that the metadata listener socket uses.
 	metadataAddress.sin6_family = AF_INET6;
 	metadataAddress.sin6_addr = in6addr_any;
 	// TODO: The scope id can be left alone in this case right? Will it just use literal addresses then?
@@ -53,74 +143,11 @@ TelecastStream::TelecastStream(u_short dataPort, u_short metadataPort) {
 	backBuffer = new char[SERVER_DATA_BUFFER_SIZE];																													// Allocate 2 same-sized buffers so that we can double buffer this.
 	frontBuffer = new char[SERVER_DATA_BUFFER_SIZE];
 
-	// Stream data socket setup.
-	if ((dataSocket = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP)) == SOCKET_ERROR) {																					// Set up a new UDP socket for data transmission.
-		int error = WSAGetLastError();
-		switch (error) {
-		case WSAENETDOWN:
-			isExperiencingNetworkIssues = true;																														// Set the network issues flag if the network subsystem failed on initialization of socket. 
-			// TODO: The above won't work, what you need to do is goto before this call and somehow only continue when the network works again. The other method with the network monitor assumes that the socket is in a valid state, which it is not here.
-			return;
-		default:
-			LOGERROR("Unhandled error while initializing UDP data socket in TelecastStream.", error);
-		}
-	}
+	// Start network monitor.
+	networkStatusMonitorThread = std::thread(networkStatusMonitor, this);																							// Start the network monitor. This monitors whatever comes after it for network issues and acts if it finds one.
 
-	u_long nonblocking = true;
-	if (ioctlsocket(dataSocket, FIONBIO, &nonblocking) == SOCKET_ERROR) {																							// Even though this looks weird, from what I could find in the docs, this function does not try to modify the nonblocking variable.
-		int error = WSAGetLastError();
-		switch (error) {
-		case WSAENETDOWN:
-			// TODO: Do the right thing here.
-		default:
-			LOGERROR("Unhandled error while setting UDP data socket to nonblocking in TelecastStream.", error);
-		}
-	}
-
-	if (bind(dataSocket, (const sockaddr*)&dataAddress, sizeof(dataAddress)) == SOCKET_ERROR) {																		// Bind the UDP data socket.
-		int error = WSAGetLastError();
-		switch (error) {
-		case WSAENETDOWN:
-			// TODO: Do the right thing here.
-		default:
-			LOGERROR("Unhandled error while binding UDP data socket in TelecastStream.", error);
-		}
-	}
-
-	// Stream metadata socket setup.
-	if ((metadataSocket = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP)) == SOCKET_ERROR) {																			// Set up a new TCP socket for metadata transmission.
-		int error = WSAGetLastError();
-		switch (error) {
-		case WSAENETDOWN:
-			// TODO: Do the right thing here. This is going to be a little more complicated than it was for the first socket in the constructor, but you'll figure out a way.
-		default:
-			LOGERROR("Unhandled error while initializing TCP metadata socket in TelecastStream.", error);
-		}
-	}
-
-	if (ioctlsocket(metadataSocket, FIONBIO, &nonblocking) == SOCKET_ERROR) {																						// Set the TCP metadata socket to nonblocking.
-		int error = WSAGetLastError();
-		switch (error) {
-		case WSAENETDOWN:
-			// TODO: Do the right thing here.
-		default:
-			LOGERROR("Unhandled error while setting TCP metadata socket to nonblocking in TelecastStream.", error);
-		}
-	}
-
-	if (bind(metadataSocket, (const sockaddr*)&metadataAddress, sizeof(metadataAddress)) == SOCKET_ERROR) {															// Bind the TCP metadata socket.
-		int error = WSAGetLastError();
-		switch (error) {
-		case WSAENETDOWN:
-			// TODO: Do the right thing here.
-		default:
-			LOGERROR("Unhandled error while binding TCP metadata socket in TelecastStream.", error);
-		}
-	}
-
-	networkStatusMonitorThread = std::thread(networkStatusMonitor, this);																							// Start the network monitoring thread. Makes sure that we can come back from network interruptions.
-	dataThread = std::thread(data, this);																															// Start the data stream thread.
-	metadataThread = std::thread(metadata, this);																													// Start the metadata thread, which handles the logistics of the transmission while the data thread does all the grunt work.
+	// Actual network setup.
+	start();																																						// Actually set up the network systems so that we can stream.
 }
 
 TelecastStream& TelecastStream::operator=(TelecastStream&& other) noexcept {																			// TODO: This is a lot of stuff to copy, consider making an initialize function so that we don't have to copy everything from the temporary.
@@ -156,6 +183,8 @@ void TelecastStream::halt() {																							// Shutdown the data and met
 
 void TelecastStream::networkStatusMonitor(TelecastStream* instance) {
 	while (instance->shouldMonitorNetworkStatus) {
+		// TODO: This is a terrible thread, definitely put a sleep in here. Use chrono probably.
+
 		if (instance->networkError) {																					// If the networkError flag is set, shutdown data and metadata threads.
 			instance->halt();
 			instance->isExperiencingNetworkIssues = true;																// Set the public network issues flag to true so the main network manager can see it.
@@ -168,15 +197,13 @@ void TelecastStream::data(TelecastStream* instance) {
 	sockaddr_in6 dataClient;								// TODO: Look into IP-spoofing, how easy is it to get past this simple security system.
 	int dataClientSize = sizeof(dataClient);
 
+	int bytesReceived;
 	while (instance->shouldReceiveData) {
-		int bytesReceived;
 		if ((bytesReceived = recvfrom(instance->dataSocket, instance->backBuffer, SERVER_DATA_BUFFER_SIZE - instance->bufferIndex, 0, (sockaddr*)&dataClient, &dataClientSize)) == SOCKET_ERROR) {					// Try to receive from the UDP data port.
 			int error = WSAGetLastError();
 			switch (error) {
 			case WSAEWOULDBLOCK: case WSAEMSGSIZE: continue;																																						// If there is nothing to receive, just keep trying.
-			case WSAENETDOWN: case WSAENETRESET: case WSAETIMEDOUT:																																					// If there is some problem with the network, notify the network monitor thread.
-				instance->networkError = true;
-				return;
+			case WSAENETDOWN: case WSAENETRESET: case WSAETIMEDOUT: goto networkError;																																// If network problems, let this function's network error handler take care of it.
 			default:
 				LOGERROR("Unhandled error message while receiving data from stream source.", error);
 			}
@@ -201,12 +228,18 @@ void TelecastStream::data(TelecastStream* instance) {
 		}
 	}
 
-	// If we shouldn't receive data anymore, shutdown the socket. Don't close yet because we might start up again.
-	shutdown(instance->dataSocket, SD_RECEIVE);																	// Shutdown the receive side of the socket since we're not sending anything.
+	// TODO: Add error handling to the following function/functions.
+	closesocket(instance->dataSocket);																			// Close the socket.
+
+	return;
+
+networkError:																																				// This should never be reached by normal code execution. Only triggers when a network error occurs somewhere in this function's code.
+	closesocket(instance->dataSocket);
+	instance->networkError = true;
 }
 
 void TelecastStream::metadata(TelecastStream* instance) {
-	if (listen(instance->metadataSocket, 1) == SOCKET_ERROR) {										// TODO: Find out if there is a time limit for how long a device can stay in the backlog here.
+	if (listen(instance->metadataListenerSocket, 1) == SOCKET_ERROR) {										// TODO: Find out if there is a time limit for how long a device can stay in the backlog here.
 		int error = WSAGetLastError();
 		switch (error) {
 		case WSAENETDOWN:																						// If network issues are detected, notify the network monitor thread.
@@ -219,15 +252,13 @@ void TelecastStream::metadata(TelecastStream* instance) {
 	SOCKET metadataConnection;
 	while (instance->shouldReceiveMetadata) {
 		// Save the current client for security reasons. We can't be streaming data from someone other than who we're getting metadata from.
-		if ((metadataConnection = accept(instance->metadataSocket, (sockaddr*)&instance->currentClient, &instance->currentClientSize)) == INVALID_SOCKET) {			// Be ready to accept a connection to the metadata socket.
+		if ((metadataConnection = accept(instance->metadataListenerSocket, (sockaddr*)&instance->currentClient, &instance->currentClientSize)) == INVALID_SOCKET) {			// Be ready to accept a new metadata connection. Save the client so that the UDP data socket knows which client to whitelist.
 			int error = WSAGetLastError();
 			switch (error) {
-			case WSAEWOULDBLOCK: continue;																							// If nothing to accept, keep trying.
+			case WSAEWOULDBLOCK: case WSAECONNRESET: continue;																												// If nothing is there to accept or if something goes wrong with the accept, just discard the client and try again.
+			case WSAENETDOWN: goto networkError;																															// If a network error occurs, goto the network error handling part of this functions code.
 			default:
-				LOG("Encountered error while accepting on the metadataSocket. Error code: ");
-				LOGNUM(WSAGetLastError());
-				closesocket(instance->metadataSocket);
-				return;													// TODO: Obviously make more cases here and handle everything perfectly.
+				LOGERROR("Unhandled error while accepting metadata connection in discovery.", error);
 			}
 		}
 
@@ -236,9 +267,9 @@ void TelecastStream::metadata(TelecastStream* instance) {
 			int error = WSAGetLastError();
 			switch (error) {
 			case WSAEWOULDBLOCK: case WSAEMSGSIZE: continue;																									// If the socket doesn't get anything or if the socket gets to much and it doesn't fit in the buffer, just drop whatever it was and try again.
-			case WSAENETDOWN: case WSAENETRESET:																												// If there are network issues, let the network monitor handle it and exit the thread.
-				instance->networkError = true;
-				return;
+			case WSAENETDOWN: case WSAENETRESET:																												// If there are network issues, goto the network error handling part of this functions code. Close the connection socket first.
+				closesocket(metadataConnection);				// TODO: Handle whatever errors could come out of this one.
+				goto networkError;
 			case WSAETIMEDOUT: case WSAECONNRESET:																												// If something goes wrong with just this single connection, just drop it and accept a new connection.
 				closesocket(metadataConnection);
 				continue;
@@ -249,56 +280,29 @@ void TelecastStream::metadata(TelecastStream* instance) {
 		instance->shouldReceiveData = true;
 
 		while (instance->shouldReceiveMetadata) {
-			// Detect if closed.
-			// If closed, then:
 			continue;
 		}
-		shutdown(instance->metadataSocket, SD_BOTH);
+
+		shutdown(metadataConnection, SD_BOTH);						// TODO: Obviously the SD_BOTH may or may not be necessary depending on what you decide to add to this function.
+		closesocket(metadataConnection);
+		closesocket(instance->metadataListenerSocket);
 		return;
 	}
-}
+	return;
 
-void TelecastStream::restart() {																																// Restart necessary systems in order to get stream back up after nework issues have waited out.
-	shouldMonitorNetworkStatus = true;																															// Start the network monitor super early in case network problems come back and mess the following binds up.
-	networkStatusMonitorThread = std::thread(networkStatusMonitor, this);
-
-	if (bind(dataSocket, (const sockaddr*)&dataAddress, sizeof(metadataAddress)) == SOCKET_ERROR) {																// Bind the TCP data socket.
-		int error = WSAGetLastError();
-		switch (error) {
-		case WSAENETDOWN:																																		// If network issues are already back, let the network monitor handle it.
-			networkError = true;
-			return;
-		default:
-			LOGERROR("Unhandled error while binding UDP data socket while restarting in TelecastStream.", error);
-		}
-	}
-	if (bind(metadataSocket, (const sockaddr*)&metadataAddress, sizeof(metadataAddress)) == SOCKET_ERROR) {														// Bind the UDP metadata socket.
-		int error = WSAGetLastError();
-		switch (error) {
-		case WSAENETDOWN:																																		// If network issues are already back, let the network monitor handle it.
-			networkError = true;
-			return;
-		default:
-			LOGERROR("Unhandled error while binding TCP metadata socket while restarting in TelecastStream.", error);
-		}
-	}
-
-	shouldReceiveMetadata = true;																																// Restart the metadata thread.
-	metadataThread = std::thread(metadata, this);
-	shouldReceiveData = true;																																	// Restart the data thread.
-	dataThread = std::thread(data, this);
+networkError:																																								// This is only reached if a network error occurs somewhere in the above code. Normal execution should never reach this part.
+	closesocket(instance->metadataListenerSocket);																															// Close the metadata listener socket.
+	instance->networkError = true;																																			// Notify the network monitor of a network failure.
 }
 
 void TelecastStream::close() {
-	halt();																																						// Halt data and metadata threads.
+	halt();																																						// Halt data and metadata threads. Sockets get disposed within the threads, so we don't need to do that here.
 	shouldMonitorNetworkStatus = false;																															// Start turning off the network monitor thread.
 	networkStatusMonitorThread.join();
-	closesocket(metadataSocket);																																// Close sockets. This releases used resources.
-	closesocket(dataSocket);
 
 	delete[] backBuffer;																																		// Release heap-allocated buffers.
 	delete[] frontBuffer;
 
-	backBuffer = nullptr;																																		// We use this as the flag for preventing double releases.
+	invalidate();																																				// Invalidate this instance so that the destructor doesn't cause any crazy things to happen if close is called by the user.
 }
-TelecastStream::~TelecastStream() { if (backBuffer) { close(); } }																								// If this class hasn't already been closed, automatically close and dispose everything.
+TelecastStream::~TelecastStream() { if (isValid()) { close(); } }																									// If this class hasn't already been closed, automatically close and dispose everything.

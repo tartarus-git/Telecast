@@ -101,13 +101,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, char* lpCmdLine
 	LOG("Starting network error monitoring system...");
 	std::thread networkMonitoringThread(monitorForNetworkErrors);
 
-	LOG("Starting Telecast stream...");
-	mainStream = TelecastStream(SERVER_DATA_PORT, SERVER_METADATA_PORT);
+	LOG("Initializing Telecast stream...");
+	mainStream = TelecastStream(SERVER_DATA_PORT, SERVER_METADATA_PORT);										// Set up the TelecastStream stuff. Keep trying until it works.
+	while (!mainStream.isValid()) {
+		// TODO: Wait for network to come back before calling it again.
+		mainStream = TelecastStream(SERVER_DATA_PORT, SERVER_METADATA_PORT);
+	}
 
-	initializeLocalDiscoveryAddress();																			// Set up the address which will be used for the discovery listening and responding.
+	LOG("Initializing discovery responder socket...");
+	setupDiscoveryResponderSocket();
+
+	LOG("Initializing discovery listener socket...");
+	initializeLocalDiscoveryAddress();
 
 	LOG("Starting discovery responder thread...");
-	setupDiscoveryResponderSocket();																			// Initialize the socket and set it to nonblocking. Also binds it to the discovery address.
 	discoveryResponderThread = std::thread(respondToDiscoveries);												// Start responder thread first so that the buffer can be emptied ASAP when listener is turned on.
 	
 	LOG("Starting discovery listener thread...");
@@ -134,6 +141,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, char* lpCmdLine
 
 	shouldMonitorForNetworkErrors = false;																		// Shutdown the network monitoring system.
 	networkMonitoringThread.join();
+
+	if (WSACleanup() == SOCKET_ERROR) {
+		int error = WSAGetLastError();
+		switch (error) {
+		case WSAENETDOWN: return;
+		default:
+			LOGERROR("Unhandled error after calling WSACleanup().", error);
+		}
+	}
 }
 
 void graphicsLoop() {

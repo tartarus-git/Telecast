@@ -14,12 +14,12 @@ private:
 	sockaddr_in6 metadataAddress;
 
 	// Sockets.
-	SOCKET dataSocket;																								// UDP
-	SOCKET metadataSocket;																							// TCP
+	SOCKET dataSocket;																										// UDP
+	SOCKET metadataListenerSocket;																							// TCP
 
 	// Threads.
-	bool networkError = false;
-	bool shouldMonitorNetworkStatus = true;
+	bool networkError;
+	bool shouldMonitorNetworkStatus;
 	std::thread networkStatusMonitorThread;
 
 	bool shouldReceiveData = false;
@@ -28,13 +28,15 @@ private:
 	std::thread metadataThread;
 
 	// Stream data.
-	char* backBuffer;																								// 2 buffers for double buffering.
+	char* backBuffer = nullptr;																								// 2 buffers for double buffering.
 	char* frontBuffer;
 	unsigned int bufferIndex = 0;
 
 	// Stream metadata.
 	sockaddr_in6 currentClient;
 	int currentClientSize = sizeof(sockaddr_in6);
+
+	void invalidate();
 
 public:
 	// Stream metadata.
@@ -46,6 +48,8 @@ public:
 	// Status flag for when the Telecast stream is experiencing network problems.
 	bool isExperiencingNetworkIssues = false;
 
+	bool isValid();
+
 	void halt();														// If any sort of error happens where the stream needs to be halted but the sockets can be reused later. Call this. Halts data and metadata threads. Network monitor thread is left intact.
 
 	static void networkStatusMonitor(TelecastStream* instance);
@@ -53,12 +57,12 @@ public:
 	static void data(TelecastStream* instance);
 	static void metadata(TelecastStream* instance);
 
+	void start();																											// Starts all the necessary systems in order to function.
+
 	TelecastStream() = default;
 	TelecastStream(u_short dataPort, u_short metadataPort);
 
 	TelecastStream& operator=(TelecastStream&& other) noexcept;
-
-	void restart();														// This needs to be called after calling halt in order to use the resources to restart the stream systems.
 
 	void close();
 	~TelecastStream();

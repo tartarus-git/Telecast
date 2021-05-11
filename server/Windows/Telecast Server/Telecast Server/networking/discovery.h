@@ -23,24 +23,36 @@ inline void initializeLocalDiscoveryAddress() {
 SOCKET discoveryListener;
 inline void setupDiscoveryListenerSocket() {
 	if (discoveryListener = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP) == INVALID_SOCKET) {													// Initialize the discovery listener socket. This will listen for discovery broacasts.
-		LOG("Failed to initialize discovery listener socket. Error code: ");								// TODO: Actually handle the errors that can happen here.
-		LOGNUM(WSAGetLastError());
-		ASSERT(false);
+		int error = WSAGetLastError();
+		switch (error) {
+		case WSAENETDOWN:																													// If network issues are present, let the network monitor know.
+			shouldDiscoveryListenRun = false;
+			return;
+		default:
+			LOGERROR("Unhandled error while initializing UDP discovery listener.", error);
+		}
 	}
 
-	// TODO: Seems like this call wants to set the nonblocking variable. Why is that. Read the docs.
-	if (ioctlsocket(discoveryListener, FIONBIO, (u_long*)&Store::nonblocking) == SOCKET_ERROR) {											// Set the discovery listener socket to non-blocking so that network logic works.
-		LOG("Failed to set the discovery listener socket so non-blocking. Error code: ");					// TODO: Do actual error handling here eventually.
-		LOGNUM(WSAGetLastError());
-		closesocket(discoveryListener);																										// Free resources of the listener socket before asserting.
-		ASSERT(false);
+	u_long nonblocking = true;
+	if (ioctlsocket(discoveryListener, FIONBIO, &nonblocking) == SOCKET_ERROR) {															// Set the discovery listener socket to non-blocking so that network logic works.
+		int error = WSAGetLastError();
+		switch (error) {
+		case WSAENETDOWN:
+			shouldDiscoveryListenRun = false;
+			return;
+		default:
+			LOGERROR("Unhandled error while setting UDP discovery listener to nonblocking.", error);
+		}
 	}
 
 	if (bind(discoveryListener, (const sockaddr*)&discoveryAddress, sizeof(discoveryAddress)) == SOCKET_ERROR) {							// Bind the discovery listener socket.
-		LOG("Failed to bind the discovery listener socket. Error code: ");
-		LOGNUM(WSAGetLastError());
-		closesocket(discoveryListener);
-		ASSERT(false);																						// TODO: Do actual error handling for this eventually.
+		int error = WSAGetLastError();
+		switch (error) {
+		case WSAENETDOWN:
+			shouldDiscoveryListenRun = false;
+		default:
+			LOGERROR("Unhandled error while binding UDP discovery listener.", error);																				// TODO: Unrelated, make sure the error logs in the TelecastStream class say metadata listener socket, because that's what it is.
+		}
 	}
 }
 
