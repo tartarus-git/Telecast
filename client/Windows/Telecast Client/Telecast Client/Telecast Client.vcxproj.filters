@@ -18,16 +18,16 @@
     <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="logging\Debug.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="storage\Store.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="remote\discovery.cpp">
+    <ClCompile Include="streaming\Device.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="remote\Device.cpp">
+    <ClCompile Include="streaming\discovery.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="streaming\TelecastStreamClient.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -35,16 +35,16 @@
     <ClInclude Include="defines.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="logging\Debug.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="storage\Store.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="remote\Device.h">
+    <ClInclude Include="streaming\Device.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="remote\discovery.h">
+    <ClInclude Include="streaming\discovery.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="streaming\TelecastStreamClient.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

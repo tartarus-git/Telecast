@@ -140,18 +140,18 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="logging\Debug.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="remote\Device.cpp" />
-    <ClCompile Include="remote\discovery.cpp" />
+    <ClCompile Include="streaming\Device.cpp" />
+    <ClCompile Include="streaming\discovery.cpp" />
     <ClCompile Include="storage\Store.cpp" />
+    <ClCompile Include="streaming\TelecastStreamClient.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="remote\Device.h" />
-    <ClInclude Include="logging\Debug.h" />
+    <ClInclude Include="streaming\Device.h" />
     <ClInclude Include="defines.h" />
-    <ClInclude Include="remote\discovery.h" />
+    <ClInclude Include="streaming\discovery.h" />
     <ClInclude Include="storage\Store.h" />
+    <ClInclude Include="streaming\TelecastStreamClient.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
