@@ -147,6 +147,7 @@
     <ClCompile Include="streaming\TelecastStreamClient.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="debugging.h" />
     <ClInclude Include="streaming\Device.h" />
     <ClInclude Include="defines.h" />
     <ClInclude Include="streaming\discovery.h" />

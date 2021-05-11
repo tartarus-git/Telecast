@@ -15,13 +15,19 @@ class TelecastStreamClient {
 	// Frame helpers.
 	SIZE frameDimensions;
 
+	bool valid;
+
 public:
-	void initialize();
+	void validate();
+	void invalidate();
+	bool isValid();
+
+	bool initialize();
 
 	TelecastStreamClient() = default;
 	TelecastStreamClient(u_short dataPort, u_short metadataPort, SIZE frameDimensions);
 
-	void connect(sockaddr_in6 server);
+	bool connect(sockaddr_in6 server);																									// Make the initial metadata and data connections with the server and send over the frame size. Return false if network issues happen anywhere along the way.
 
-	void sendFrame(const char* data);
+	bool sendFrame(const char* data);																									// Send the frame contained within the buffer pointed to by data. Returns false if network issues are encountered.
 };
