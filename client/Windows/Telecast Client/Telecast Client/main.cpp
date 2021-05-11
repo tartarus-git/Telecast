@@ -1,6 +1,8 @@
 // Copyright (c) 2021 tartarus-git
 // Licensed under the MIT License.
 
+// TODO: Obviously add this copyright to the rest of the files as well.
+
 #include <winsock2.h>					// No need to include Windows.h because this already contains everything we need.
 #include <ws2tcpip.h>
 #include <thread>
