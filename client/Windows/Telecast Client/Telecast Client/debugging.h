@@ -58,10 +58,10 @@ inline void logError(const char* message, int errorCode) {
 
 #define ASSERT(condition) if (!(condition)) { __debugbreak(); }
 #else
-#define LOG(message) ((void)0)
-#define LOGNUM(num) ((void)0)
+#define LOG(message)
+#define LOGNUM(num)
 
-#define LOGERROR(message, errorCode) ((void)0)
+#define LOGERROR(message, errorCode)
 
-#define ASSERT(condition) ((void)0)
+#define ASSERT(condition)
 #endif
